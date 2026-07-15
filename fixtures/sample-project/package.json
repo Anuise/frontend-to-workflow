@@ -1,0 +1,10 @@
+{
+  "name": "sample-frontend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "供 frontend-to-workflow 測試用的可啟動純前端 fixture project（無後端、無登入）。",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

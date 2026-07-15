@@ -1,0 +1,6 @@
+# 手寫 fixture：sample-frontend 的 Manifest（f2w-capture 的輸入契約檔）
+project: sample-frontend
+install: npm install
+start: npm run start
+port: 4173
+baseUrl: http://localhost:4173

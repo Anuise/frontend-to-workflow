@@ -1,0 +1,21 @@
+{
+  "name": "frontend-to-workflow",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "將純前端專案轉成使用者視角工作流程 Excel 的 4-step skill 管線的共用地基（契約、驗證、fixtures）。",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "yaml": "^2.5.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.0.0"
+  }
+}
