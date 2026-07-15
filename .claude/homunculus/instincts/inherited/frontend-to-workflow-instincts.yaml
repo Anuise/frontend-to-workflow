@@ -1,0 +1,278 @@
+# Instincts generated from https://github.com/Anuise/frontend-to-workflow
+# Generated: 2026-07-15T05:28:59.266Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: frontend-to-workflow-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Commit Length
+
+## Action
+
+Keep commit messages concise (~38 characters)
+
+## Evidence
+
+- Average commit message length: 38 chars
+- Based on 1 commits
+
+---
+id: frontend-to-workflow-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: frontend-to-workflow-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: frontend-to-workflow-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: frontend-to-workflow-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: frontend-to-workflow-instinct-file-naming-camelCase
+trigger: "When creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Instinct File Naming CamelCase
+
+## Action
+
+Name the file using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.files
+
+---
+id: frontend-to-workflow-instinct-function-naming-camelCase
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Instinct Function Naming CamelCase
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions
+
+---
+id: frontend-to-workflow-instinct-class-naming-pascalCase
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Instinct Class Naming PascalCase
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes
+
+---
+id: frontend-to-workflow-instinct-constant-naming-screaming-snake-case
+trigger: "When defining a new constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Instinct Constant Naming Screaming Snake Case
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in namingConventions.constants
+
+---
+id: frontend-to-workflow-instinct-import-style-relative
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Instinct Import Style Relative
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle
+
+---
+id: frontend-to-workflow-instinct-export-style-named
+trigger: "When exporting modules or functions"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Instinct Export Style Named
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle
+
+---
+id: frontend-to-workflow-instinct-commit-format-freeform
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Instinct Commit Format Freeform
+
+## Action
+
+Write a freeform commit message without a required prefix
+
+## Evidence
+
+- Pattern in commits.prefixes (empty)
+- Example commit: 'Add Matt Pocock skills per-repo config'
+
+---
+id: frontend-to-workflow-instinct-commit-length-average
+trigger: "When writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Instinct Commit Length Average
+
+## Action
+
+Keep the commit message concise, around 38 characters on average
+
+## Evidence
+
+- Pattern in commits.averageLength
+
+---
+id: frontend-to-workflow-instinct-test-location-separate
+trigger: "When adding or organizing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: Anuise/frontend-to-workflow
+---
+
+# Frontend To Workflow Instinct Test Location Separate
+
+## Action
+
+Place test files in a separate location from source files
+
+## Evidence
+
+- Pattern in architecture.testLocation
+
