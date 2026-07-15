@@ -23,7 +23,8 @@ description: frontend-to-workflow 管線的第一步。偵測並啟動 Workspace
    - 通過契約驗證才寫檔；驗證失敗會丟 `ContractValidationError` 且不落地。
    - 之後重跑同一 project 會自動重用此檔（回到步驟 1 的 `reused: true`）。
 4. **啟動** — `launchProject(manifest, projectDir)`
-   - 以 `manifest.port` 覆寫 `PORT` 環境變數啟動，輪詢 `baseUrl` 直到可存取，回傳可 `stop()` 的 handle。
+   - 啟動前會先 `ensureInstalled`：專案宣告了相依且尚無 `node_modules` 時，先跑 `manifest.install`；無相依或已裝過則略過。
+   - 接著以 `manifest.port` 覆寫 `PORT` 環境變數啟動，輪詢 `baseUrl` 直到可存取，回傳可 `stop()` 的 handle。
    - 純前端下即使某頁因無後端而回 4xx/5xx，只要 server 有回應就算啟動成功，照實保留。
 
 ## 逃生口
@@ -32,4 +33,4 @@ description: frontend-to-workflow 管線的第一步。偵測並啟動 Workspace
 
 ## 對應實作
 
-`src/start/`：`detectManifest`（偵測）、`resolveManifest`（重用或偵測）、`saveManifest`（確認後保存）、`launchProject`（啟動）。契約與路徑見 `src/contracts/manifest.ts` 與 `src/output.ts`。
+`src/start/`：`detectManifest`（偵測）、`resolveManifest`（重用或偵測）、`saveManifest`（確認後保存）、`ensureInstalled`（必要時安裝相依）、`launchProject`（啟動）。契約與路徑見 `src/contracts/manifest.ts` 與 `src/output.ts`。

@@ -1,4 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Manifest } from "../contracts/manifest";
 
 const isWindows = process.platform === "win32";
@@ -30,6 +32,9 @@ export async function launchProject(
   const timeoutMs = options.timeoutMs ?? 30_000;
   const intervalMs = options.intervalMs ?? 300;
 
+  // 啟動前必要時先安裝相依，確保 start 能跑起來（無相依或已裝過則略過）。
+  await ensureInstalled(manifest, projectDir);
+
   const child = spawn(manifest.start, {
     cwd: projectDir,
     shell: true,
@@ -48,6 +53,50 @@ export async function launchProject(
     throw err;
   }
   return handle;
+}
+
+/**
+ * 必要時依 Manifest 安裝相依：專案宣告了相依、且尚無 node_modules 才跑 manifest.install。
+ * 無相依或已安裝過則略過，等安裝指令成功結束才回。
+ */
+export async function ensureInstalled(manifest: Manifest, projectDir: string): Promise<void> {
+  if (!needsInstall(projectDir)) {
+    return;
+  }
+  await runToCompletion(manifest.install, projectDir);
+}
+
+/** 專案是否需要安裝：宣告了相依（dependencies/devDependencies）且尚無 node_modules。 */
+function needsInstall(projectDir: string): boolean {
+  if (existsSync(join(projectDir, "node_modules"))) {
+    return false;
+  }
+  const pkgPath = join(projectDir, "package.json");
+  if (!existsSync(pkgPath)) {
+    return false;
+  }
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  const declared =
+    Object.keys(pkg.dependencies ?? {}).length + Object.keys(pkg.devDependencies ?? {}).length;
+  return declared > 0;
+}
+
+/** 跑一個指令到結束；exit code 非 0 即丟錯。 */
+function runToCompletion(command: string, cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, { cwd, shell: true, stdio: "ignore" });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`安裝指令失敗（exit ${code}）：${command}`));
+      }
+    });
+  });
 }
 
 /** 輪詢 baseUrl 直到收到任何 HTTP 回應（純前端下 4xx/5xx 也算起得來）。 */
