@@ -1,0 +1,43 @@
+{
+  "project": "sample-frontend",
+  "overview": "sample-frontend 是一個示範用的純前端 project。使用者從首頁進入，可經導覽列前往「關於」了解專案，或前往「設定」頁在「個人資料」與「帳號」兩個 tab 之間切換與編輯。整體流程以首頁為樞紐，設定頁承載主要的表單操作。",
+  "pages": [
+    {
+      "route": "/",
+      "purpose": "首頁，是整個前端的進入點。",
+      "content": "顯示歡迎訊息、專案簡介，以及前往關於頁與設定頁的導覽連結。",
+      "actions": [
+        { "label": "點擊導覽列「關於」", "destination": { "route": "/about" } },
+        { "label": "點擊「前往設定」按鈕", "destination": { "route": "/settings", "tab": "個人資料" } }
+      ]
+    },
+    {
+      "route": "/about",
+      "purpose": "介紹這個示範專案的用途。",
+      "content": "顯示一段關於 sample-frontend 的說明文字，以及返回首頁的連結。",
+      "actions": [
+        { "label": "點擊導覽列「首頁」", "destination": { "route": "/" } }
+      ]
+    },
+    {
+      "route": "/settings",
+      "tab": "個人資料",
+      "purpose": "編輯使用者的個人資料。",
+      "content": "顯示姓名與 Email 兩個輸入欄位，以及切換到「帳號」tab 的按鈕。",
+      "actions": [
+        { "label": "點擊「帳號」tab", "destination": { "route": "/settings", "tab": "帳號" } },
+        { "label": "填寫姓名／Email 欄位", "destination": null }
+      ]
+    },
+    {
+      "route": "/settings",
+      "tab": "帳號",
+      "purpose": "管理帳號安全設定。",
+      "content": "顯示密碼輸入欄位，以及切換回「個人資料」tab 的按鈕。",
+      "actions": [
+        { "label": "點擊「個人資料」tab", "destination": { "route": "/settings", "tab": "個人資料" } },
+        { "label": "填寫密碼欄位", "destination": null }
+      ]
+    }
+  ]
+}

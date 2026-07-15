@@ -1,0 +1,9 @@
+{
+  "project": "sample-frontend",
+  "pages": [
+    { "route": "/", "screenshot": "home.png" },
+    { "route": "/about", "screenshot": "about.png" },
+    { "route": "/settings", "tab": "個人資料", "screenshot": "settings-profile.png" },
+    { "route": "/settings", "tab": "帳號", "screenshot": "settings-account.png" }
+  ]
+}
