@@ -1,0 +1,67 @@
+{
+  "project": "sample-frontend",
+  "frontend": [
+    {
+      "id": "FE-HOME-1",
+      "sourcePage": { "route": "/" },
+      "title": "首頁與導覽列",
+      "scope": "呈現歡迎訊息、專案簡介，以及前往關於頁與設定頁的導覽連結。",
+      "acceptance": "首頁載入後顯示歡迎訊息，點擊導覽連結可分別前往 /about 與 /settings。",
+      "dependsOn": [],
+      "risk": "",
+      "inferred": false
+    },
+    {
+      "id": "FE-ABOUT-1",
+      "sourcePage": { "route": "/about" },
+      "title": "關於頁靜態內容",
+      "scope": "呈現 sample-frontend 的說明文字與返回首頁的連結。",
+      "acceptance": "關於頁顯示說明文字，點擊「首頁」連結可返回 /。",
+      "dependsOn": [],
+      "risk": "",
+      "inferred": false
+    },
+    {
+      "id": "FE-SETTINGS-PROFILE-1",
+      "sourcePage": { "route": "/settings", "tab": "個人資料" },
+      "title": "個人資料表單",
+      "scope": "呈現姓名與 Email 輸入欄位，並可切換到「帳號」tab。",
+      "acceptance": "可輸入姓名與 Email，點擊「帳號」tab 切換到帳號設定。",
+      "dependsOn": [],
+      "risk": "欄位驗證規則未定，需與需求方確認。",
+      "inferred": false
+    },
+    {
+      "id": "FE-SETTINGS-ACCOUNT-1",
+      "sourcePage": { "route": "/settings", "tab": "帳號" },
+      "title": "帳號密碼表單",
+      "scope": "呈現密碼輸入欄位，並可切換回「個人資料」tab。",
+      "acceptance": "可輸入密碼，點擊「個人資料」tab 切換回個人資料。",
+      "dependsOn": [],
+      "risk": "",
+      "inferred": false
+    }
+  ],
+  "backend": [
+    {
+      "id": "BE-PROFILE-SAVE",
+      "sourcePage": { "route": "/settings", "tab": "個人資料" },
+      "title": "儲存個人資料 API",
+      "scope": "接收姓名與 Email，驗證後持久化。",
+      "acceptance": "提交合法資料回 200 並落地；非法資料回 400 與錯誤訊息。",
+      "dependsOn": ["FE-SETTINGS-PROFILE-1"],
+      "risk": "後端契約由前端操作推論，欄位與驗證規則待與後端確認。",
+      "inferred": true
+    },
+    {
+      "id": "BE-PASSWORD-CHANGE",
+      "sourcePage": { "route": "/settings", "tab": "帳號" },
+      "title": "變更密碼 API",
+      "scope": "接收新密碼，套用強度規則後更新。",
+      "acceptance": "合法密碼回 200；不符強度規則回 400 與原因。",
+      "dependsOn": ["FE-SETTINGS-ACCOUNT-1"],
+      "risk": "密碼強度政策與雜湊方式待與後端確認。",
+      "inferred": true
+    }
+  ]
+}
