@@ -6,6 +6,8 @@ export const CONTRACT_FILES = {
   pages: "pages.json",
   workflow: "workflow.json",
   workbook: "workflow.xlsx",
+  workitems: "workitems.json",
+  workitemsWorkbook: "workitems.xlsx",
 } as const;
 
 export type ContractName = keyof typeof CONTRACT_FILES;
@@ -19,6 +21,8 @@ export const CONTRACT_PRODUCER: Record<ContractName, string> = {
   pages: "f2w-capture",
   workflow: "f2w-describe",
   workbook: "f2w-export",
+  workitems: "f2w-breakdown",
+  workitemsWorkbook: "f2w-breakdown-export",
 };
 
 /** output/<project>/ 的路徑。 */
