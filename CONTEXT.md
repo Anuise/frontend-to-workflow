@@ -35,3 +35,23 @@ _Avoid_: intro, abstract
 **Workbook（工作流程 Excel）**:
 最終交付物 `workflow.xlsx`：含「概述」與「逐頁工作流程」兩個 sheet，逐頁列出 Workflow description 並嵌入截圖縮圖。
 _Avoid_: report, spreadsheet, 報表
+
+**Work item（工項）**:
+一筆可分派、可畫押的最小工作單位；錨定在某個 Page，分前端／後端兩層，是 `workitems.xlsx` 每列的單位。
+_Avoid_: task, ticket, 任務（泛稱）
+
+**Work breakdown（工項劃分）**:
+把一個 Project 的 Workflow 拆成前端＋後端 Work item 的產物；由 `f2w-breakdown` 產出 `workitems.json`（宣告式逃生口），`f2w-breakdown-export` 組成 `workitems.xlsx`。
+_Avoid_: WBS（泛稱）, 拆解, 任務清單
+
+**Inferred work item（推論工項）**:
+後端 Work item 因本 skill 假設無後端可觀察，一律由 AI 從前端操作推論而來、標為「推論·待確認」（`inferred: true`）；開工前須與後端確認。與觀察自畫面的前端 Work item 嚴格區分。
+_Avoid_: 假設工項, 臆測工項
+
+**權責畫押（RACI sign-off）**:
+在工作副本上為每筆 Work item 填定 RACI 責任（A 當責＝單一人、R 負責＝可多人、C 諮詢、I 告知）與簽核；由人填寫，AI 不代填「承諾型」欄位（估時、優先級、RACI）。
+_Avoid_: 分工, 指派, assignment（泛稱）
+
+**範本／工作副本（Template workbook／Working copy）**:
+`workitems.xlsx` 是畫押欄留白的**範本**、可被重跑覆蓋；人須另存一份**工作副本**填畫押值，重跑只覆蓋範本、不動工作副本。
+_Avoid_: 空白表／填好的表（泛稱）
