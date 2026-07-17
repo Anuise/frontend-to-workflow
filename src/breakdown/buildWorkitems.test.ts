@@ -61,6 +61,23 @@ const backendItems: WorkItemInput[] = [
   },
 ];
 
+// 顆粒度底線用：單一 Page 有兩個可執行操作（停留原頁），floor = max(1, 2) = 2。
+const granularityWorkflow: Workflow = parseWorkflow({
+  project: "demo",
+  overview: "儀表板有兩個原頁操作。",
+  pages: [
+    {
+      route: "/dashboard",
+      purpose: "儀表板。",
+      content: "篩選與匯出兩個操作。",
+      actions: [
+        { label: "展開篩選", destination: null },
+        { label: "匯出報表", destination: null },
+      ],
+    },
+  ],
+});
+
 describe("buildWorkitems", () => {
   it("組出合法 workitems；前端 inferred=false、後端 inferred=true 由陣列決定", () => {
     const w = buildWorkitems(workflow, frontendItems, backendItems);
@@ -76,6 +93,35 @@ describe("buildWorkitems", () => {
     const call = () => buildWorkitems(workflow, [frontendItems[0]!], backendItems);
     expect(call).toThrow(WorkitemsConsistencyError);
     expect(call).toThrow(/settings/);
+  });
+
+  it("顆粒度：某 Page 前端工項數少於可執行操作數時丟 WorkitemsConsistencyError", () => {
+    const one: WorkItemInput = {
+      id: "FE-D1",
+      sourcePage: { route: "/dashboard" },
+      title: "儀表板整頁",
+      scope: "把整頁一次做完。",
+      acceptance: "能操作。",
+      dependsOn: [],
+      risk: "",
+    };
+    const call = () => buildWorkitems(granularityWorkflow, [one], []);
+    expect(call).toThrow(WorkitemsConsistencyError);
+    expect(call).toThrow(/dashboard/);
+  });
+
+  it("顆粒度：前端工項數達 max(1, actions 數) 時通過", () => {
+    const mk = (n: number): WorkItemInput => ({
+      id: `FE-D${n}`,
+      sourcePage: { route: "/dashboard" },
+      title: `操作 ${n}`,
+      scope: "範疇。",
+      acceptance: "驗收。",
+      dependsOn: [],
+      risk: "",
+    });
+    const w = buildWorkitems(granularityWorkflow, [mk(1), mk(2)], []);
+    expect(w.frontend).toHaveLength(2);
   });
 
   it("參照：sourcePage 不存在於 workflow.pages 時丟 WorkitemsConsistencyError", () => {
@@ -106,17 +152,23 @@ describe("buildWorkitems", () => {
 
   it("端到端（真實 fixtures）：讀 workflow.json 後可組出涵蓋所有 Page 的 workitems", () => {
     const wf = loadWorkflow(join(process.cwd(), "fixtures/contracts/workflow.json"));
-    const fe: WorkItemInput[] = wf.pages.map((p, idx) => ({
-      id: `FE-${idx + 1}`,
-      sourcePage: p.tab === undefined ? { route: p.route } : { route: p.route, tab: p.tab },
-      title: `工項 ${idx + 1}`,
-      scope: "範疇。",
-      acceptance: "驗收。",
-      dependsOn: [],
-      risk: "",
-    }));
+    // 每頁依 max(1, actions 數) 產出對應筆數，滿足逐操作顆粒度底線。
+    const fe: WorkItemInput[] = wf.pages.flatMap((p, pi) => {
+      const floor = Math.max(1, p.actions.length);
+      const sourcePage = p.tab === undefined ? { route: p.route } : { route: p.route, tab: p.tab };
+      return Array.from({ length: floor }, (_, k) => ({
+        id: `FE-${pi + 1}-${k + 1}`,
+        sourcePage,
+        title: `工項 ${pi + 1}-${k + 1}`,
+        scope: "範疇。",
+        acceptance: "驗收。",
+        dependsOn: [],
+        risk: "",
+      }));
+    });
+    const expected = wf.pages.reduce((n, p) => n + Math.max(1, p.actions.length), 0);
     const w = buildWorkitems(wf, fe, []);
-    expect(w.frontend).toHaveLength(wf.pages.length);
+    expect(w.frontend).toHaveLength(expected);
     expect(w.backend).toHaveLength(0);
   });
 });

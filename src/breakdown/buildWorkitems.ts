@@ -59,12 +59,22 @@ export function buildWorkitems(
     );
   }
 
-  // 涵蓋：每個 Page 至少一筆前端工項
-  const coveredKeys = new Set(frontendItems.map((i) => pageIdKey(i.sourcePage)));
-  const uncovered = workflow.pages.filter((p) => !coveredKeys.has(pageIdKey(p)));
-  if (uncovered.length) {
+  // 涵蓋＋顆粒度：每個 Page 的前端工項數 ≥ max(1, 該頁可執行操作數)
+  // 逐可執行操作至少一筆前端工項；純顯示頁（0 actions）至少一筆。
+  // max(1, …) 保證下限恆 ≥1，故此檢查涵蓋並取代舊的 per-page ≥1 涵蓋把關。
+  const feCountByKey = new Map<string, number>();
+  for (const i of frontendItems) {
+    const k = pageIdKey(i.sourcePage);
+    feCountByKey.set(k, (feCountByKey.get(k) ?? 0) + 1);
+  }
+  const underCovered = workflow.pages
+    .map((p) => ({ page: p, count: feCountByKey.get(pageIdKey(p)) ?? 0, floor: Math.max(1, p.actions.length) }))
+    .filter((x) => x.count < x.floor);
+  if (underCovered.length) {
     throw new WorkitemsConsistencyError(
-      `以下 Page 沒有任何前端工項（涵蓋不足）：${uncovered.map(label).join("、")}`,
+      `以下 Page 前端工項數少於可執行操作數（顆粒度不足，需逐操作至少一筆）：${underCovered
+        .map((x) => `${label(x.page)}（前端 ${x.count}／需 ${x.floor}）`)
+        .join("、")}`,
     );
   }
 
