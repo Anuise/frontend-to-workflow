@@ -9,6 +9,8 @@ description: frontend-to-workflow 管線的第六步（最後一步）。讀取 
 
 前置：`output/<project>/workitems.json`（由 f2w-breakdown 產出）。缺件即中止並提示先跑 f2w-breakdown。
 產出：`output/<project>/workitems.xlsx`。
+
+> **可選 f2w-sourcing 的接法（規劃中，隨 f2w-sourcing 實作）**：若可選插入步 `f2w-sourcing` 已跑、`output/<project>/workitems-sourced.json` 存在，本步**優先讀 sourced 檔**、不在才退回 `workitems.json`（見 ADR-0004）。讀到 sourced 檔時，「後端工項」sheet 額外呈現來源決策欄：`sourcing`（四桶）｜`adaptationRole`（fetch／process）｜`vendor`｜`vendorEndpoints`｜「來源狀態」（`sourcingConfirmed=false` 顯示「配對·待確認」）。純自建專案沒有 sourced 檔，行為與現況一致。
 假設：沿用 ADR-0002——後端 Work item 一律是 AI 推論的 **Inferred work item**，在「後端工項」sheet 以「推論狀態＝推論·待確認」明示，開工前的正確性責任落在人工確認。
 
 **為何畫押欄留白**：估時／優先級／RACI／簽核日期／狀態是多人協作的**承諾型**權責畫押值，不由 AI 代填、也不進 `workitems.json`（見 f2w-breakdown 與 CONTEXT.md「權責畫押」「範本／工作副本」）。本步只出**表頭在、值空**的範本；畫押值由人在另存的**工作副本（Working copy）**填。
