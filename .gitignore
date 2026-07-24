@@ -145,3 +145,5 @@ vite.config.ts.timestamp-*
 # frontend-to-workflow：Workspace（待文件化的 project 原始碼，不被追蹤）與管線產出
 /workspace/
 /output/
+
+/frontend/
