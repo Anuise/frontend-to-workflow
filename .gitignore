@@ -143,7 +143,10 @@ vite.config.ts.timestamp-*
 .vite/
 
 # frontend-to-workflow：Workspace（待文件化的 project 原始碼，不被追蹤）與管線產出
-/workspace/
-/output/
+# 資料夾本身保留（README.md 追蹤），內容一律不追蹤
+/workspace/*
+!/workspace/README.md
+/output/*
+!/output/README.md
 
 /frontend/
