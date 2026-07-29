@@ -1,22 +1,24 @@
 ---
 name: f2w-export
-description: frontend-to-workflow 管線的第四步（最後一步）。讀取 workflow.json、pages.json 與 screenshots/，組裝出 Workbook workflow.xlsx：含「概述」sheet（放 Overview）與「逐頁工作流程」sheet（每列一個 Page，含 Workflow description 且嵌入該頁截圖縮圖）。缺前置檔時提示先跑上一步。Use when the user wants to run f2w-export, assemble the workflow workbook, or produce workflow.xlsx for the frontend-to-workflow pipeline.
+description: frontend-to-workflow 管線的第四步。讀取 workflow.json、pages.json 與 screenshots/，組裝出 Workbook workflow.xlsx：含「概述」sheet（放 Overview）與「逐頁工作流程」sheet（每列一個 Page，含 Workflow description 且嵌入該頁截圖縮圖）。缺前置檔時提示先跑上一步。Use when the user wants to run f2w-export, assemble the workflow workbook, or produce workflow.xlsx for the frontend-to-workflow pipeline.
 ---
 
 # f2w-export：組裝 Workbook（workflow.xlsx）
 
-管線四步的第四步（最後一步）。讀取 f2w-describe 的產出 `output/<project>/workflow.json`（Overview 與逐頁 Workflow description）、f2w-capture 的 `output/<project>/pages.json`（Page → 截圖檔名對應）與 `output/<project>/screenshots/`，組裝出最終交付物 `output/<project>/workflow.xlsx`：含「概述」與「逐頁工作流程」兩個 sheet，逐頁列出描述並嵌入截圖縮圖。
+管線四步的第四步。讀取 f2w-describe 的產出 `output/<project>/workflow.json`（Overview 與逐頁 Workflow description，新版每頁含 `screenshot` 截圖來源）、f2w-capture 的 `output/<project>/pages.json`（Page → 截圖檔名對應）與 `output/<project>/screenshots/`，組裝出交付物 `output/<project>/workflow.xlsx`：含「概述」與「逐頁工作流程」兩個 sheet，逐頁列出描述並嵌入截圖縮圖。
 
 前置：`output/<project>/workflow.json`（f2w-describe 產出）、`output/<project>/pages.json` 與 `output/<project>/screenshots/`（f2w-capture 產出）。缺 `workflow.json` 中止並提示先跑 f2w-describe；缺 `pages.json` 或 `screenshots/`（含個別截圖檔）中止並提示先跑 f2w-capture。
 產出：`output/<project>/workflow.xlsx`。
 假設：**純前端**，無後端、無登入。截圖照 f2w-capture 截到的實際樣貌嵌入（含空資料／錯誤狀態）。
 
-**為何要讀 `pages.json`**：`workflow.json` 逐頁只帶 route/tab 與描述，**不含截圖檔名**（截圖檔名由 f2w-capture 任意指派、只存在 `pages.json`）。要讓每列嵌入正確的縮圖，就得以 `pages.json` 的 Page → screenshot 對應（單一真實來源）把每個 Page 對回它的截圖檔。
+**為何仍要讀 `pages.json`**：新版 `workflow.json` 每頁會保留 `screenshot`，方便人工檢查；但 `pages.json` 仍是 f2w-capture 的截圖對應來源，也提供舊版 `workflow.json` 缺 `screenshot` 時的 fallback。`f2w-export` 必須讀兩者並用 Page 識別比對：Page 集合要一一對應，且 workflow 有 `screenshot` 時必須等於 pages 的 `screenshot`；不一致即中止。
 
 ## 流程
 
 1. **讀取前置** — `loadDescribedWorkflow(outputRoot, project)`
    - 確認 `workflow.json`、`pages.json`、`screenshots/` 皆在，讀回並驗證後回傳 `workflow` 與「Page → 截圖影像」對應（key 為 Page 識別，值為截圖位元組＋副檔名）。
+   - 先比對 `workflow.json` 與 `pages.json`：兩邊 Page 集合必須一致；若 workflow page 有 `screenshot`，必須與 pages entry 的 `screenshot` 相同。不一致丟 `ExportInputConsistencyError`，**中止**。
+   - 嵌圖檔名優先取 `workflow.json.pages[].screenshot`；舊版 workflow 缺欄位時 fallback 到 `pages.json.pages[].screenshot`。
    - 缺 `workflow.json` 丟 `MissingPrerequisiteError`（提示先跑 f2w-describe）；缺 `pages.json`／`screenshots/`／個別截圖檔丟 `MissingPrerequisiteError`（提示先跑 f2w-capture）。任一缺件即**中止**。
 2. **組裝 Workbook** — `buildWorkbook(workflow, screenshots)`（確定性核心）
    - 「概述」sheet：呈現 Overview。

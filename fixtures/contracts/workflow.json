@@ -4,6 +4,7 @@
   "pages": [
     {
       "route": "/",
+      "screenshot": "home.png",
       "purpose": "首頁，是整個前端的進入點。",
       "content": "顯示歡迎訊息、專案簡介，以及前往關於頁與設定頁的導覽連結。",
       "actions": [
@@ -13,6 +14,7 @@
     },
     {
       "route": "/about",
+      "screenshot": "about.png",
       "purpose": "介紹這個示範專案的用途。",
       "content": "顯示一段關於 sample-frontend 的說明文字，以及返回首頁的連結。",
       "actions": [
@@ -22,6 +24,7 @@
     {
       "route": "/settings",
       "tab": "個人資料",
+      "screenshot": "settings-profile.png",
       "purpose": "編輯使用者的個人資料。",
       "content": "顯示姓名與 Email 兩個輸入欄位，以及切換到「帳號」tab 的按鈕。",
       "actions": [
@@ -32,6 +35,7 @@
     {
       "route": "/settings",
       "tab": "帳號",
+      "screenshot": "settings-account.png",
       "purpose": "管理帳號安全設定。",
       "content": "顯示密碼輸入欄位，以及切換回「個人資料」tab 的按鈕。",
       "actions": [

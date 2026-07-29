@@ -30,8 +30,8 @@ description: frontend-to-workflow 管線的總說明。說明六個 step skill�
 
 - **f2w-start**：偵測 Project 如何安裝／啟動／對外 port／base URL，經使用者確認後保存成 **Manifest**（`manifest.yml`），並把 Project 實際跑起來。
 - **f2w-capture**：讀執行中 Project，列舉所有 **Page**（正規化路由；同路由下不同 tab 各成一頁）並逐頁截圖，產出 `pages.json` 與 `screenshots/`。
-- **f2w-describe**：看截圖，以使用者視角為每個 Page 寫一段 **Workflow description**（頁面用途、主要內容、可執行操作、每個操作的操作去向），另寫一段跨頁 **Overview**，產出 `workflow.json`。
-- **f2w-export**：組裝最終 **Workbook** `workflow.xlsx`：含「概述」sheet（放 Overview）與「逐頁工作流程」sheet（每列一個 Page，含 Workflow description 且嵌入該頁截圖縮圖）。（`workflow.json` 不含截圖檔名，故本步需另讀 `pages.json` 取 Page → 截圖對應。）
+- **f2w-describe**：看截圖，以使用者視角為每個 Page 寫一段 **Workflow description**（截圖來源、頁面用途、主要內容、可執行操作、每個操作的操作去向），另寫一段跨頁 **Overview**，產出 `workflow.json`。
+- **f2w-export**：組裝最終 **Workbook** `workflow.xlsx`：含「概述」sheet（放 Overview）與「逐頁工作流程」sheet（每列一個 Page，含 Workflow description 且嵌入該頁截圖縮圖）。新產出的 `workflow.json` 每頁會保留 `screenshot`；本步仍讀 `pages.json` 作為截圖對應的 fallback 與一致性來源。
 - **f2w-diagram**（分支步，與 f2w-export 併行）：讀 `workflow.json`，依階層路徑（route 的 path 段 ＋ tab 的麵包屑段）把 **Page** 切成若干 **Section**，產出多分頁的 **Navigation diagram** `workflow.drawio`——第 1 頁總覽（入口記號、全域導覽記號、每個 Section 一個方框並掛分頁連結），之後每個 Section 一頁、內部依麵包屑樹父左子右展開。邊只留推進的：側欄造成的跨 Section 邊收成全域導覽記號、同父 tab 互跳收成 tab 群組框、子頁回上層的返回操作降進 tooltip。麵包屑有段無實頁時生隱含節點；某 Section 長不出單根樹就退回分層網格並提醒。節點為兩段式（粗體短標題 ＋ 小字頁面用途）。**零推論**，不引入新的待確認維度；孤立頁會照實回報。決策見 ADR-0005、ADR-0006 與 ADR-0007。
 - **f2w-breakdown**：讀 `workflow.json`，依每個 Page 的 Workflow description 把工作拆成**前端 Work item**（觀察自畫面）與**後端 Work item**（AI 推論、一律標「推論·待確認」），產出 **Work breakdown** `workitems.json`。承諾型欄位（估時／優先級／RACI／簽核／狀態）刻意不進 json。
 - **f2w-sourcing**（可選插入步，有權責泳道圖或供應商 API 才跑）：讀 `workitems.json`，對照人提供的**權責泳道圖**（draw.io，泳道＝分工方）與 **Vendor spec**（OpenAPI／Swagger）——兩種輸入皆可選、至少一份、觸發時指定路徑——為每個後端 Work item 定 **Party assignment（分工歸屬）**：派給一個分工方（泳道名或 spec 供應商名，如 mobagel／gary／leadtek）或 `needs-investigation` 待查；一筆工項橫跨兩方時拆成多筆**跨方接力**（`dependsOn` 串、`originItemId` 溯源），產出 **Sourced work breakdown** `workitems-sourced.json`（前端原封複製、後端貼標＋拆項）。配對一律標 `sourcingConfirmed: false`，與後端既有的「推論·待確認」是兩個獨立待確認維度。決策見 ADR-0007（ADR-0004 部分被其取代）。

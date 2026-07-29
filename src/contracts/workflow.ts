@@ -12,8 +12,9 @@ export const workflowActionSchema = z.object({
   destination: pageIdSchema.nullable(),
 });
 
-/** 逐 Page 的 Workflow description：頁面用途、主要內容、可執行操作。 */
+/** 逐 Page 的 Workflow description：截圖來源、頁面用途、主要內容、可執行操作。 */
 export const workflowPageSchema = pageIdSchema.extend({
+  screenshot: z.string().min(1).optional(),
   purpose: z.string().min(1),
   content: z.string().min(1),
   actions: z.array(workflowActionSchema),

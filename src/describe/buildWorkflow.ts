@@ -7,7 +7,7 @@ import { contractPath } from "../output";
 
 /**
  * 逐 Page 的使用者視角描述：頁面用途、主要內容、可執行操作（含操作去向）。
- * route/tab 用來對應到 pages.json 裡的某個截到的 Page；最終 route/tab 一律取自 pages.json。
+ * route/tab 用來對應到 pages.json 裡的某個截到的 Page；最終 route/tab 與 screenshot 一律取自 pages.json。
  */
 export interface PageDescription {
   route: string;
@@ -38,7 +38,7 @@ function label(id: PageId): string {
  * 由 pages.json 與 agent 的逐頁描述接合出並驗證一份 workflow 物件。
  * - 涵蓋：描述須與截到的 Page 一一對應——漏頁、多頁或重複描述皆丟 WorkflowConsistencyError。
  * - 操作去向：每個非 null 的 destination 必須指向 pages.json 內存在的 Page，否則丟 WorkflowConsistencyError。
- * - route/tab 一律取自 pages.json（單一真實來源），描述只提供 purpose/content/actions。
+ * - route/tab 與 screenshot 一律取自 pages.json（單一真實來源），描述只提供 purpose/content/actions。
  * - 通過契約驗證（overview/purpose/label 非空、Page 識別唯一）才回傳，否則丟 ContractValidationError。
  */
 export function buildWorkflow(
@@ -74,12 +74,12 @@ export function buildWorkflow(
     );
   }
 
-  // 以 pages.json 的 route/tab 為準組裝逐頁描述
+  // 以 pages.json 的 route/tab 與 screenshot 為準組裝逐頁描述
   const byKey = new Map(descriptions.map((d) => [pageIdKey(d), d]));
   const workflowPages = pages.pages.map((p) => {
     const d = byKey.get(pageIdKey(p))!;
     const id: PageId = p.tab === undefined ? { route: p.route } : { route: p.route, tab: p.tab };
-    return { ...id, purpose: d.purpose, content: d.content, actions: d.actions };
+    return { ...id, screenshot: p.screenshot, purpose: d.purpose, content: d.content, actions: d.actions };
   });
 
   return parseWorkflow({ project: pages.project, overview, pages: workflowPages });

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { pageIdKey } from "../contracts/page";
 import { contractPath, screenshotsPath } from "../output";
 import { MissingPrerequisiteError } from "../prerequisites";
-import { loadDescribedWorkflow } from "./inputs";
+import { ExportInputConsistencyError, loadDescribedWorkflow } from "./inputs";
 
 // fixtures/contracts/ 恰好符合 output/<project>/ 版面：workflow.json + pages.json + screenshots/
 const FIXTURE_ROOT = join(process.cwd(), "fixtures");
@@ -23,10 +23,11 @@ const validWorkflow = {
   project: "demo",
   overview: "從首頁可前往設定頁編輯個人資料。",
   pages: [
-    { route: "/", purpose: "首頁。", content: "歡迎訊息與連結。", actions: [] },
+    { route: "/", screenshot: "home.png", purpose: "首頁。", content: "歡迎訊息與連結。", actions: [] },
     {
       route: "/settings",
       tab: "個人資料",
+      screenshot: "settings-profile.png",
       purpose: "編輯個人資料。",
       content: "姓名與 Email 欄位。",
       actions: [],
@@ -98,5 +99,54 @@ describe("loadDescribedWorkflow", () => {
       expect(shot!.buffer.length).toBeGreaterThan(0);
       expect(shot!.extension).toBe("png");
     }
+  });
+
+  it("舊版 workflow 缺 screenshot 時 fallback 到 pages.json 的截圖對應", () => {
+    const root = mkdtempSync(join(tmpdir(), "f2w-export-in-"));
+    const legacyWorkflow = {
+      ...validWorkflow,
+      pages: validWorkflow.pages.map(({ screenshot: _screenshot, ...page }) => page),
+    };
+    writeJson(root, "demo", "workflow", legacyWorkflow);
+    writeJson(root, "demo", "pages", validPages);
+    const shotsDir = screenshotsPath(root, "demo");
+    mkdirSync(shotsDir, { recursive: true });
+    writeFileSync(join(shotsDir, "home.png"), "home");
+    writeFileSync(join(shotsDir, "settings-profile.png"), "settings");
+
+    const { screenshots } = loadDescribedWorkflow(root, "demo");
+    expect(screenshots.size).toBe(2);
+    expect(screenshots.get(pageIdKey({ route: "/" }))?.buffer.toString("utf8")).toBe("home");
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("workflow.json 的 screenshot 與 pages.json 不一致時中止", () => {
+    const root = mkdtempSync(join(tmpdir(), "f2w-export-in-"));
+    const mismatched = {
+      ...validWorkflow,
+      pages: [{ ...validWorkflow.pages[0]!, screenshot: "wrong.png" }, validWorkflow.pages[1]!],
+    };
+    writeJson(root, "demo", "workflow", mismatched);
+    writeJson(root, "demo", "pages", validPages);
+    mkdirSync(screenshotsPath(root, "demo"), { recursive: true });
+
+    const call = () => loadDescribedWorkflow(root, "demo");
+    expect(call).toThrow(ExportInputConsistencyError);
+    expect(call).toThrow(/workflow\.json=wrong\.png/);
+    expect(call).toThrow(/pages\.json=home\.png/);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("workflow.json 與 pages.json 的 Page 集合不一致時中止", () => {
+    const root = mkdtempSync(join(tmpdir(), "f2w-export-in-"));
+    const missingWorkflowPage = { ...validWorkflow, pages: [validWorkflow.pages[0]!] };
+    writeJson(root, "demo", "workflow", missingWorkflowPage);
+    writeJson(root, "demo", "pages", validPages);
+    mkdirSync(screenshotsPath(root, "demo"), { recursive: true });
+
+    const call = () => loadDescribedWorkflow(root, "demo");
+    expect(call).toThrow(ExportInputConsistencyError);
+    expect(call).toThrow(/pages\.json 有但 workflow\.json 未描述/);
+    rmSync(root, { recursive: true, force: true });
   });
 });
