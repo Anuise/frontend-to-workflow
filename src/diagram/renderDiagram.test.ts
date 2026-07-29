@@ -84,8 +84,14 @@ describe("renderDiagram", () => {
   it("入口與 Page 各用自己的樣式，邊走直角路由", () => {
     const xml = renderDiagram(buildDiagram(workflow));
     expect(xml).toContain('<mxCell id="Entry_1" value="入口" style="ellipse;');
-    expect(xml).toContain('<mxCell id="Page_about" value="介紹。"');
     expect(xml).toContain("edgeStyle=orthogonalEdgeStyle;");
+  });
+
+  it("Page 節點是兩段式：粗體短標題在上、頁面用途在下", () => {
+    const xml = renderDiagram(buildDiagram(workflow));
+    expect(xml).toContain(
+      '<mxCell id="Page_about" value="&lt;b&gt;about&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;介紹。&lt;/font&gt;"',
+    );
   });
 
   it("不換頁的操作進 UserObject 的 tooltip、換行用 <br>；換頁操作進邊的 value", () => {

@@ -4,6 +4,7 @@ import {
   DiagramConsistencyError,
   ENTRY_NODE_ID,
   GLOBAL_NAV_NODE_ID,
+  ISOLATED_MARK,
   type NavigationDiagram,
   OVERVIEW_PAGE_NAME,
   RETURN_TOOLTIP_HEADER,
@@ -221,10 +222,20 @@ describe("buildDiagram 邊的分類", () => {
 });
 
 describe("buildDiagram warnings", () => {
-  it("孤立頁仍畫在自己的 Section 分頁上，並原文提醒", () => {
+  it("孤立頁仍畫在自己的 Section 分頁上、標題帶警示前綴，並原文提醒", () => {
     const diagram = buildDiagram(workflow);
-    expect(pageNamed(diagram, "稽核").nodes).toHaveLength(1);
+    const nodes = pageNamed(diagram, "稽核").nodes;
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]!.title).toBe(`${ISOLATED_MARK}稽核`);
     expect(diagram.warnings).toContain(isolatedPagesWarning([to("SSO｜稽核")]));
+  });
+
+  it("非孤立頁的標題是階層路徑末段，不帶警示前綴", () => {
+    const diagram = buildDiagram(workflow);
+    const detail = pageNamed(diagram, "訂單").nodes.find((n) => n.label === "單筆訂單內容。")!;
+    expect(detail.title).toBe("詳情");
+    expect(detail.width).toBe(240);
+    expect(detail.height).toBe(100);
   });
 
   it("不再有「無終點」這條提醒——麵包屑樹永遠有葉節點", () => {

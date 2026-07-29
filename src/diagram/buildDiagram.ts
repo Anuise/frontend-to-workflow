@@ -9,6 +9,8 @@ export type DiagramNodeKind = "entry" | "globalNav" | "section" | "implied" | "p
 export interface DiagramNode {
   id: string;
   kind: DiagramNodeKind;
+  /** 掃視用的短標題（階層路徑末段）；有它時 label 降為第二行小字。 */
+  title?: string;
   label: string;
   /** 不換頁的操作；畫成 draw.io 的 tooltip，不佔版面。 */
   tooltip?: string;
@@ -26,6 +28,8 @@ export interface DiagramEdge {
   label?: string;
   sourceId: string;
   targetId: string;
+  /** 從兩端的下緣進出，繞到那一列底下走；總覽頁的橫向轉場才不會穿過中間的方框。 */
+  routeBelow?: boolean;
 }
 
 /** 圈住同父 tab 子頁的框：它們彼此可直接切換，不畫成邊。 */
@@ -94,6 +98,9 @@ export const RETURN_TOOLTIP_HEADER = "返回操作：";
 /** tab 群組框的標題；同父 tab 之間可直接切換，不畫成邊。 */
 export const TAB_GROUP_LABEL = "可互相切換的 tab";
 
+/** 孤立頁（從入口走不到）的標題前綴。 */
+export const ISOLATED_MARK = "⚠ ";
+
 /** 某 Section 切不出單根的麵包屑樹、已退回分層網格的提醒。 */
 export function fallbackLayoutWarning(name: string): string {
   return `Section「${name}」切不出 ≥2 層階層，已退回分層網格；若非本意，回頭調整 f2w-capture 的 route／tab 命名。`;
@@ -106,17 +113,21 @@ export function isolatedPagesWarning(pages: readonly PageId[]): string {
 }
 
 // 節點尺寸與間距（像素）。Page 方框加寬到 160 才放得下中文用途；欄距留給邊的直角轉折。
-const PAGE_WIDTH = 160;
-const PAGE_HEIGHT = 80;
+const PAGE_WIDTH = 240;
+const PAGE_HEIGHT = 100;
 const ENTRY_SIZE = 36;
 const IMPLIED_HEIGHT = 40;
 const GLOBAL_NAV_WIDTH = 160;
 const GLOBAL_NAV_HEIGHT = 40;
 const SECTION_WIDTH = 200;
 const SECTION_HEIGHT = 60;
-const COLUMN_SPACING = 260;
+/** 一格的寬度：所有節點在格內置中對齊，圖才不會歪。 */
+const SLOT_WIDTH = 240;
+const COLUMN_SPACING = 340;
 const ROW_SPACING = 140;
 const BAND_GAP = 200; // 主圖與孤立頁區之間的留白
+/** 總覽頁上 Section 方框所在的列；上面兩列留給進場記號與全域導覽記號的邊。 */
+const OVERVIEW_SECTION_ROW = 2;
 const GROUP_PADDING = 16;
 const GROUP_HEADER = 22;
 const ORIGIN_X = 60;
@@ -270,14 +281,14 @@ class PageBuilder {
       ...node,
       width,
       height,
-      // 窄節點在欄內、列內都對齊最寬節點的中線，圖才不會歪
-      x: ORIGIN_X + column * COLUMN_SPACING + (SECTION_WIDTH - width) / 2,
+      // 窄節點在欄內、列內都對齊格子的中線，圖才不會歪
+      x: ORIGIN_X + column * COLUMN_SPACING + (SLOT_WIDTH - width) / 2,
       y: ORIGIN_Y + row * ROW_SPACING + (PAGE_HEIGHT - height) / 2,
     });
   }
 
-  addEdge(sourceId: string, targetId: string, label?: string): void {
-    this.edges.push({ id: this.nextEdgeId(), sourceId, targetId, label });
+  addEdge(sourceId: string, targetId: string, label?: string, routeBelow?: boolean): void {
+    this.edges.push({ id: this.nextEdgeId(), sourceId, targetId, label, ...(routeBelow && { routeBelow }) });
   }
 
   /** 圈住一組節點：框住它們的外接矩形，上緣多留一條放標題。 */
@@ -353,8 +364,10 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
   );
 
   // ---- 總覽頁：進場記號、全域導覽記號、每個 Section 一個方框 ----
+  // Section 方框橫排一列、記號放上方：8 條全域導覽邊才會各自往下扇開，
+  // 不會全部擠進同一條垂直走廊穿過方框。
   overview.addNode({ id: ENTRY_NODE_ID, kind: "entry", label: ENTRY_LABEL }, 0, 0);
-  overview.addNode({ id: GLOBAL_NAV_NODE_ID, kind: "globalNav", label: GLOBAL_NAV_LABEL }, 0, 1);
+  overview.addNode({ id: GLOBAL_NAV_NODE_ID, kind: "globalNav", label: GLOBAL_NAV_LABEL }, 1, 0);
   sections.forEach((section, index) => {
     overview.addNode(
       {
@@ -363,8 +376,8 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
         label: `${section.name}（${section.pages.length} 頁）`,
         linkToPageId: sectionPageIds.get(section)!,
       },
-      1,
       index,
+      OVERVIEW_SECTION_ROW,
     );
   });
   overview.addEdge(ENTRY_NODE_ID, sectionIds.get(sectionOf.get(pageIdKey(workflow.pages[0]!))!)!);
@@ -427,14 +440,20 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
     }
   }
   for (const { from, to, label } of crossSection) {
-    overview.addEdge(sectionIds.get(from)!, sectionIds.get(to)!, label);
+    overview.addEdge(sectionIds.get(from)!, sectionIds.get(to)!, label, true);
   }
 
   // ---- 各 Section 分頁：麵包屑樹，父在左、子在右；列＝深度優先走訪順序 ----
   const warnings: string[] = [];
   const usedImpliedIds = new Set<string>();
+  const depths = bfsDepths(workflow);
+  const isolated = workflow.pages.filter((page) => !depths.has(pageIdKey(page)));
+  const isolatedKeys = new Set(isolated.map(pageIdKey));
+
   const nodeOfPage = (page: WorkflowPage) => {
     const returns = returnLabels.get(pageIdKey(page)) ?? [];
+    const segments = hierarchyPath(page);
+    const title = `${isolatedKeys.has(pageIdKey(page)) ? ISOLATED_MARK : ""}${segments[segments.length - 1] ?? page.route}`;
     const sections_ = [
       stayingTooltip(page),
       returns.length > 0
@@ -444,13 +463,11 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
     return {
       id: pageIds.get(pageIdKey(page))!,
       kind: "page" as const,
+      title,
       label: page.purpose,
       tooltip: sections_.length > 0 ? sections_.join("\n") : undefined,
     };
   };
-
-  const depths = bfsDepths(workflow);
-  const isolated = workflow.pages.filter((page) => !depths.has(pageIdKey(page)));
 
   for (const section of sections) {
     const builder = builders.get(section)!;

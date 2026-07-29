@@ -29,6 +29,10 @@ const EDGE_STYLE =
 const GROUP_STYLE =
   "rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#f9f7fd;strokeColor=#9673a6;verticalAlign=top;align=left;spacingLeft=8;fontSize=9;fontColor=#7a5c95;";
 
+/** 兩端都從下緣進出：橫向的轉場邊會繞到那一列底下走，不穿過中間的方框。 */
+const BELOW_ROW_PORTS =
+  "exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;";
+
 /** 版面右下再留的白邊。 */
 const PAGE_MARGIN = 200;
 
@@ -49,12 +53,23 @@ function escapeTooltip(value: string): string {
   return escapeXml(value).replace(/\n/g, "&lt;br&gt;");
 }
 
+/**
+ * 節點的顯示值。有短標題時做成兩段式：第一行粗體標題負責掃視、第二行小字負責理解。
+ * 整串 HTML escape 一次——draw.io 讀進屬性後還原成標記再以 html=1 渲染。
+ */
+function nodeValue(node: DiagramNode): string {
+  if (!node.title) return escapeXml(node.label);
+  return escapeXml(
+    `<b>${node.title}</b><br><font style="font-size:9px">${node.label}</font>`,
+  );
+}
+
 function renderNode(node: DiagramNode): string {
   const geometry = `<mxGeometry x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" as="geometry" />`;
   const style = NODE_STYLE[node.kind];
   if (!node.tooltip && !node.linkToPageId) {
     return [
-      `        <mxCell id="${node.id}" value="${escapeXml(node.label)}" style="${style}" vertex="1" parent="1">`,
+      `        <mxCell id="${node.id}" value="${nodeValue(node)}" style="${style}" vertex="1" parent="1">`,
       `          ${geometry}`,
       "        </mxCell>",
     ].join("\n");
@@ -62,7 +77,7 @@ function renderNode(node: DiagramNode): string {
   // 帶 tooltip 或分頁連結的節點要包一層 UserObject——mxCell 本身沒有這兩個屬性
   const attrs = [
     `id="${node.id}"`,
-    `label="${escapeXml(node.label)}"`,
+    `label="${nodeValue(node)}"`,
     ...(node.tooltip ? [`tooltip="${escapeTooltip(node.tooltip)}"`] : []),
     ...(node.linkToPageId ? [`link="data:page/id,${escapeXml(node.linkToPageId)}"`] : []),
   ].join(" ");
@@ -85,8 +100,9 @@ function renderGroup(group: DiagramGroup): string {
 }
 
 function renderEdge(edge: DiagramEdge): string {
+  const style = edge.routeBelow ? `${EDGE_STYLE}${BELOW_ROW_PORTS}` : EDGE_STYLE;
   return [
-    `        <mxCell id="${edge.id}" value="${edge.label ? escapeXml(edge.label) : ""}" style="${EDGE_STYLE}" edge="1" parent="1" source="${edge.sourceId}" target="${edge.targetId}">`,
+    `        <mxCell id="${edge.id}" value="${edge.label ? escapeXml(edge.label) : ""}" style="${style}" edge="1" parent="1" source="${edge.sourceId}" target="${edge.targetId}">`,
     '          <mxGeometry relative="1" as="geometry" />',
     "        </mxCell>",
   ].join("\n");
