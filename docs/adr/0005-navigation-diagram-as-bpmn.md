@@ -1,6 +1,8 @@
 # f2w-bpmn 出的是導覽流程圖，用 BPMN 2.0 XML，多出口插 exclusiveGateway
 
 新增與 `f2w-export` **並列的分支步** `f2w-bpmn`：讀同一份 `workflow.json`，產出 **Navigation diagram** `workflow.bpmn`。三個綁在一起的決策：圖的**主體是導覽**（不是業務流程）、格式是 **BPMN 2.0 XML**（不是 mermaid）、一頁多出口時**插 exclusiveGateway**（不是隱式分歧）。
+> **格式與多出口決策已由 [ADR-0006](0006-navigation-diagram-as-drawio.md) 取代**（產物改為 draw.io 的 `workflow.drawio`、不再插 `exclusiveGateway`／`endEvent`）。本 ADR 的第一個決策——圖的主體是導覽、零推論、確定性生成——仍然有效。
+
 
 ## Considered Options
 
