@@ -55,7 +55,7 @@ export interface DiagramPage {
 export interface NavigationDiagram {
   name: string;
   pages: DiagramPage[];
-  /** 純循環無終點、孤立頁等情形；由 f2w-diagram 原文回報給使用者。 */
+  /** 退回分層網格、孤立頁等情形；由 f2w-diagram 原文回報給使用者。 */
   warnings: string[];
 }
 
@@ -112,7 +112,7 @@ export function isolatedPagesWarning(pages: readonly PageId[]): string {
   return `以下 Page 從入口走不到，已另列一區且不接入口記號：${labels}。若非本意，回頭補 workflow.json 中指向它們的操作去向（f2w-capture 的已知盲點：hash routing、非 <a> 導覽）。`;
 }
 
-// 節點尺寸與間距（像素）。Page 方框加寬到 160 才放得下中文用途；欄距留給邊的直角轉折。
+// 節點尺寸與間距（像素）。Page 方框 240×100 才放得下「粗體標題＋中文用途」兩段；欄距留給邊的直角轉折。
 const PAGE_WIDTH = 240;
 const PAGE_HEIGHT = 100;
 const ENTRY_SIZE = 36;
@@ -455,7 +455,7 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
     const returns = returnLabels.get(pageIdKey(page)) ?? [];
     const segments = hierarchyPath(page);
     const title = `${isolatedKeys.has(pageIdKey(page)) ? ISOLATED_MARK : ""}${segments[segments.length - 1] ?? page.route}`;
-    const sections_ = [
+    const tooltipParts = [
       stayingTooltip(page),
       returns.length > 0
         ? [RETURN_TOOLTIP_HEADER, ...returns.map((label) => `• ${label}`)].join("\n")
@@ -466,7 +466,7 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
       kind: "page" as const,
       title,
       label: page.purpose,
-      tooltip: sections_.length > 0 ? sections_.join("\n") : undefined,
+      tooltip: tooltipParts.length > 0 ? tooltipParts.join("\n") : undefined,
     };
   };
 
