@@ -392,8 +392,9 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
   const returnLabels = new Map<string, string[]>();
   /** 有兄弟互跳的父節點；只有這些父節點的子頁才圈 tab 群組。 */
   const tabGroupParents = new Set<string>();
+  // 分隔符不能省：["a","bc"] 與 ["ab","c"] 直接串接會撞成同一個鍵。
   const parentKey = (section: Section, path: readonly string[]) =>
-    `${sectionIds.get(section)!} ${path.join("")}`;
+    [sectionIds.get(section)!, ...path].join(" ᛫ ");
 
   for (const page of workflow.pages) {
     const from = sectionOf.get(pageIdKey(page))!;
@@ -412,7 +413,7 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
           // 兄弟 ↔ 兄弟：同一組 tab 互跳，改用一個框圈起來。
           if (
             source.length === target.length &&
-            source.slice(0, -1).join("") === target.slice(0, -1).join("")
+            source.slice(0, -1).join(" ᛫ ") === target.slice(0, -1).join(" ᛫ ")
           ) {
             tabGroupParents.add(parentKey(from, source.slice(0, -1)));
             continue;
