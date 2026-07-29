@@ -37,8 +37,24 @@ _Avoid_: intro, abstract
 _Avoid_: report, spreadsheet, 報表
 
 **Navigation diagram（導覽流程圖）**:
-以 Page 為節點、換頁操作為有向邊的導覽交付圖 `workflow.drawio`；由 `f2w-diagram` 從 Workflow description 確定性生成、零推論。畫的是使用者在頁面之間怎麼走，不含業務決策條件、角色泳道與訊息事件。
+以 Page 為節點、換頁操作為有向邊的導覽交付圖 `workflow.drawio`；由 `f2w-diagram` 從 Workflow description 確定性生成、零推論。畫的是使用者在頁面之間怎麼走，不含業務決策條件、角色泳道與訊息事件。檔內含多個 draw.io 分頁：第 1 頁總覽，之後每個 Section 一頁。
 _Avoid_: 業務流程圖, BPMN 圖, flowchart, 流程圖（泛稱）
+
+**Section（區段）**:
+Navigation diagram 的分頁單位：一群 Page ＋ 它們的麵包屑樹。由階層路徑（`route` 的 path 段 ＋ `tab` 以全形直線切開的段）中第一個具區辨力的段切出。**使用者口語的「一條完整的路線」即指 Section。**
+_Avoid_: Route（專指 `pages[].route` 的 URL 路徑）, Flow（撞 workflow）, 模組（產品功能區的泛稱）
+
+**Global nav marker（全域導覽記號）**:
+總覽頁上代表「側欄可從任一頁跳到各 Section 首頁」的單一節點。跨 Section 且目的地為該 Section 首頁的邊全部收成它發出的邊——驗證資料 73 條收成 8 條。與 Entry marker（入口記號）同一類的合成節點。
+_Avoid_: 側邊欄節點, menu, 導覽列
+
+**Implied node（隱含節點）**:
+麵包屑階層有這一段、但 `workflow.json` 裡沒有對應 Page 而生出的框（例如只有 tab 子頁的 `模型服務詳情`）。由階層路徑確定性推得、不讀 label 語意，因此仍屬零推論——與 Inferred work item 的「推論·待確認」是無關的兩件事。
+_Avoid_: 虛擬節點, 假節點, 推論節點
+
+**Tab group（tab 群組）**:
+圈住同父 tab 子頁的框，標題固定為「可互相切換的 tab」。只有該組兄弟之間實際存在互跳邊時才生框，平行子頁不生框。取代兄弟↔兄弟的互跳邊——驗證資料 46 條收成 0。
+_Avoid_: 泳道, swimlane, 容器
 
 **Work item（工項）**:
 一筆可分派、可畫押的最小工作單位；錨定在某個 Page，分前端／後端兩層，是 `workitems.xlsx` 每列的單位。

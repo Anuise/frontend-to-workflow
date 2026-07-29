@@ -3,215 +3,285 @@ import type { Workflow } from "../contracts/workflow";
 import {
   DiagramConsistencyError,
   ENTRY_NODE_ID,
-  NO_LEAF_PAGE_WARNING,
+  GLOBAL_NAV_NODE_ID,
+  ISOLATED_MARK,
   type NavigationDiagram,
+  OVERVIEW_PAGE_NAME,
+  RETURN_TOOLTIP_HEADER,
+  TAB_GROUP_LABEL,
   buildDiagram,
+  fallbackLayoutWarning,
+  isolatedPagesWarning,
 } from "./buildDiagram";
+import { SINGLE_SECTION_NAME } from "./sections";
 
-/** 首頁兩條出口、關於頁無出口（葉頁）、設定頁單一出口，另有一個孤立頁。 */
+const R = "/index";
+const to = (tab: string) => ({ route: R, tab });
+
+/**
+ * 帶麵包屑階層的 fixture，形狀比照驗證資料：
+ * 第 0 段是登入方式（SSO／一般登入，底下都有訂單 ⇒ 不具區辨力），第 1 段才是 Section。
+ * 切出 4 個 Section：登入1／訂單3／設定2／稽核1。
+ */
 const workflow: Workflow = {
   project: "demo",
-  overview: "從首頁進入，可前往關於或設定。",
+  overview: "從登入頁進入，可走訂單或設定。",
   pages: [
     {
-      route: "/",
-      purpose: "首頁，是進入點。",
-      content: "歡迎訊息與導覽連結。",
+      ...to("登入"),
+      purpose: "平台入口，選擇身分。",
+      content: "兩顆登入按鈕。",
       actions: [
-        { label: "點擊「關於」", destination: { route: "/about" } },
-        { label: "點擊「前往設定」", destination: { route: "/settings", tab: "個人資料" } },
+        { label: "點「SSO 登入」", destination: to("SSO｜訂單｜清單") },
+        { label: "點「一般登入」直接進到某張單", destination: to("一般登入｜訂單｜清單") },
+      ],
+    },
+    {
+      ...to("SSO｜訂單｜清單"),
+      purpose: "訂單總覽。",
+      content: "訂單表格。",
+      actions: [
+        { label: "點某筆訂單", destination: to("SSO｜訂單｜清單｜詳情") },
+        { label: "點側欄「設定」", destination: to("SSO｜設定｜個人") },
         { label: "捲動頁面", destination: null },
       ],
     },
     {
-      route: "/about",
-      purpose: "介紹本專案。",
-      content: "一段說明文字。",
-      actions: [],
+      ...to("SSO｜訂單｜清單｜詳情"),
+      purpose: "單筆訂單內容。",
+      content: "明細欄位。",
+      actions: [{ label: "按「返回清單」", destination: to("SSO｜訂單｜清單") }],
     },
     {
-      route: "/settings",
-      tab: "個人資料",
+      ...to("SSO｜設定｜個人"),
       purpose: "編輯個人資料。",
-      content: "姓名與 Email 欄位。",
-      actions: [{ label: "點擊「回首頁」", destination: { route: "/" } }],
+      content: "姓名與 Email。",
+      actions: [
+        { label: "切到「安全」", destination: to("SSO｜設定｜安全") },
+        { label: "點側欄「訂單」", destination: to("SSO｜訂單｜清單") },
+      ],
     },
+    { ...to("SSO｜設定｜安全"), purpose: "改密碼。", content: "密碼欄位。", actions: [] },
     {
-      route: "/orphan",
-      purpose: "沒有任何頁面連得到這裡。",
-      content: "孤立內容。",
+      ...to("一般登入｜訂單｜清單"),
+      purpose: "一般身分的訂單總覽。",
+      content: "簡化表格。",
       actions: [],
     },
+    { ...to("SSO｜稽核"), purpose: "沒有任何頁面連得到這裡。", content: "稽核紀錄。", actions: [] },
   ],
 };
 
+function pageNamed(diagram: NavigationDiagram, name: string) {
+  const page = diagram.pages.find((p) => p.name === name);
+  expect(page, `找不到分頁 ${name}`).toBeDefined();
+  return page!;
+}
+
 function nodeById(diagram: NavigationDiagram, id: string) {
-  const node = diagram.nodes.find((n) => n.id === id);
+  const node = diagram.pages.flatMap((p) => p.nodes).find((n) => n.id === id);
   expect(node, `找不到節點 ${id}`).toBeDefined();
   return node!;
 }
 
-function edgesFrom(diagram: NavigationDiagram, sourceId: string) {
-  return diagram.edges.filter((edge) => edge.sourceId === sourceId);
-}
-
-describe("buildDiagram 語意映射", () => {
-  it("每個 Page 一個節點，id 由正規化 route(+tab) 衍生、label 為頁面用途", () => {
+describe("buildDiagram 分頁結構", () => {
+  it("第 1 頁是總覽，之後每個 Section 一頁", () => {
     const diagram = buildDiagram(workflow);
-    const pages = diagram.nodes.filter((n) => n.kind === "page");
-    expect(pages.map((p) => p.id)).toEqual([
-      "Page_root",
-      "Page_about",
-      "Page_settings_個人資料",
-      "Page_orphan",
-    ]);
-    expect(nodeById(diagram, "Page_root").label).toBe("首頁，是進入點。");
-  });
-
-  it("進場記號接 pages 陣列第一筆", () => {
-    const diagram = buildDiagram(workflow);
-    expect(nodeById(diagram, ENTRY_NODE_ID).kind).toBe("entry");
-    expect(edgesFrom(diagram, ENTRY_NODE_ID)).toEqual([
-      { id: "Edge_1", sourceId: ENTRY_NODE_ID, targetId: "Page_root", label: undefined },
+    expect(diagram.pages.map((page) => page.name)).toEqual([
+      OVERVIEW_PAGE_NAME,
+      "登入",
+      "訂單",
+      "設定",
+      "稽核",
     ]);
   });
 
-  it("一頁多出口直接拉多條帶 label 的邊，不插分歧節點", () => {
+  it("每個 Page 一個節點，落在自己的 Section 分頁上，父在左子在右", () => {
     const diagram = buildDiagram(workflow);
-    expect(diagram.nodes.every((n) => n.kind === "entry" || n.kind === "page")).toBe(true);
-    expect(edgesFrom(diagram, "Page_root")).toEqual([
-      { id: "Edge_2", sourceId: "Page_root", targetId: "Page_about", label: "點擊「關於」" },
-      {
-        id: "Edge_3",
-        sourceId: "Page_root",
-        targetId: "Page_settings_個人資料",
-        label: "點擊「前往設定」",
-      },
+    const order = pageNamed(diagram, "訂單").nodes;
+    // 麵包屑沒有「訂單」這一頁，所以樹根是隱含節點；其餘依深度優先走訪
+    expect(order.map((node) => [node.kind, node.label])).toEqual([
+      ["implied", "訂單"],
+      ["page", "訂單總覽。"],
+      ["page", "單筆訂單內容。"],
+      ["page", "一般身分的訂單總覽。"],
     ]);
+    expect(order[0]!.x).toBeLessThan(order[1]!.x);
+    expect(pageNamed(diagram, "設定").nodes.filter((node) => node.kind === "page")).toHaveLength(2);
   });
 
-  it("單一換頁操作也是一條帶 label 的邊", () => {
+  it("分頁 id 互不重複，邊 id 跨分頁也不重複", () => {
     const diagram = buildDiagram(workflow);
-    expect(edgesFrom(diagram, "Page_settings_個人資料")).toEqual([
-      {
-        id: "Edge_4",
-        sourceId: "Page_settings_個人資料",
-        targetId: "Page_root",
-        label: "點擊「回首頁」",
-      },
+    const pageIds = diagram.pages.map((page) => page.id);
+    expect(new Set(pageIds).size).toBe(pageIds.length);
+    const edgeIds = diagram.pages.flatMap((page) => page.edges.map((edge) => edge.id));
+    expect(new Set(edgeIds).size).toBe(edgeIds.length);
+  });
+});
+
+describe("buildDiagram 總覽頁", () => {
+  it("由進場記號、全域導覽記號與每個 Section 一個方框組成", () => {
+    const overview = pageNamed(buildDiagram(workflow), OVERVIEW_PAGE_NAME);
+    expect(overview.nodes.map((node) => node.kind)).toEqual([
+      "entry",
+      "globalNav",
+      "section",
+      "section",
+      "section",
+      "section",
     ]);
+    expect(
+      overview.nodes.filter((node) => node.kind === "section").map((node) => node.label),
+    ).toEqual(["登入（1 頁）", "訂單（3 頁）", "設定（2 頁）", "稽核（1 頁）"]);
   });
 
-  it("葉頁沒有出邊，也不補終點節點", () => {
+  it("Section 方框掛分頁連結，指向自己那一頁", () => {
     const diagram = buildDiagram(workflow);
-    expect(edgesFrom(diagram, "Page_about")).toEqual([]);
-    expect(diagram.nodes).toHaveLength(5); // 1 個進場記號 ＋ 4 頁
+    const box = pageNamed(diagram, OVERVIEW_PAGE_NAME).nodes.find((node) =>
+      node.label.startsWith("訂單"),
+    );
+    expect(box?.linkToPageId).toBe(pageNamed(diagram, "訂單").id);
+  });
+
+  it("進場記號接 pages[0] 所屬的 Section", () => {
+    const diagram = buildDiagram(workflow);
+    const overview = pageNamed(diagram, OVERVIEW_PAGE_NAME);
+    const entryEdge = overview.edges.find((edge) => edge.sourceId === ENTRY_NODE_ID);
+    const target = overview.nodes.find((node) => node.id === entryEdge?.targetId);
+    expect(target?.label).toBe("登入（1 頁）");
+  });
+});
+
+describe("buildDiagram 邊的分類", () => {
+  it("跨 Section 且指向該 Section 首頁的邊收成全域導覽記號發出的邊", () => {
+    const overview = pageNamed(buildDiagram(workflow), OVERVIEW_PAGE_NAME);
+    const navEdges = overview.edges.filter((edge) => edge.sourceId === GLOBAL_NAV_NODE_ID);
+    const targets = navEdges.map(
+      (edge) => overview.nodes.find((node) => node.id === edge.targetId)?.label,
+    );
+    expect(targets).toEqual(["訂單（3 頁）", "設定（2 頁）"]);
+    // 收掉的側欄操作說明不再出現在圖上
+    expect(navEdges.every((edge) => edge.label === undefined)).toBe(true);
+  });
+
+  it("跨 Section 但不指向首頁的邊是真實轉場，畫在總覽頁且保留原 label", () => {
+    const overview = pageNamed(buildDiagram(workflow), OVERVIEW_PAGE_NAME);
+    const transitions = overview.edges.filter((edge) => edge.label !== undefined);
+    expect(transitions).toHaveLength(1);
+    expect(transitions[0]!.label).toBe("點「一般登入」直接進到某張單");
+  });
+
+  it("同 Section 的推進邊（父→子）畫在該 Section 的分頁上", () => {
+    const diagram = buildDiagram(workflow);
+    expect(pageNamed(diagram, "訂單").edges.map((edge) => edge.label)).toEqual(["點某筆訂單"]);
+  });
+
+  it("子→祖先的返回邊不畫，label 進來源節點 tooltip 的返回操作段", () => {
+    const diagram = buildDiagram(workflow);
+    const detail = pageNamed(diagram, "訂單").nodes.find((n) => n.label === "單筆訂單內容。")!;
+    expect(detail.tooltip).toBe(`${RETURN_TOOLTIP_HEADER}\n• 按「返回清單」`);
+  });
+
+  it("兄弟互跳不畫邊，改用 tab 群組框圈起來", () => {
+    const diagram = buildDiagram(workflow);
+    const settings = pageNamed(diagram, "設定");
+    expect(settings.edges).toHaveLength(0);
+    expect(settings.groups.map((group) => group.label)).toEqual([TAB_GROUP_LABEL]);
+    // 框住兩個 tab 子頁
+    const group = settings.groups[0]!;
+    const members = settings.nodes.filter(
+      (node) => node.x >= group.x && node.x + node.width <= group.x + group.width,
+    );
+    expect(members.map((node) => node.label)).toEqual(["編輯個人資料。", "改密碼。"]);
+  });
+
+  it("沒有互跳的平行子頁不圈框", () => {
+    // 訂單底下兩個「清單」是平行子頁，彼此沒有互跳
+    expect(pageNamed(buildDiagram(workflow), "訂單").groups).toHaveLength(0);
   });
 
   it("不換頁的操作寫進該節點的 tooltip，不生節點也不生邊", () => {
     const diagram = buildDiagram(workflow);
-    expect(nodeById(diagram, "Page_root").tooltip).toContain("捲動頁面");
-    expect(nodeById(diagram, "Page_about").tooltip).toBeUndefined();
-    expect(diagram.edges.some((e) => e.label === "捲動頁面")).toBe(false);
-  });
-
-  it("id 撞名時依 workflow.json 順序補 _2，保持唯一", () => {
-    const colliding: Workflow = {
-      project: "demo",
-      overview: "兩個 tab 名去掉符號後撞在一起。",
-      pages: [
-        { route: "/s", tab: "設定！", purpose: "一", content: "一", actions: [] },
-        { route: "/s", tab: "設定？", purpose: "二", content: "二", actions: [] },
-      ],
-    };
-    const ids = buildDiagram(colliding)
-      .nodes.filter((n) => n.kind === "page")
-      .map((n) => n.id);
-    expect(ids).toEqual(["Page_s_設定", "Page_s_設定_2"]);
+    const node = pageNamed(diagram, "訂單").nodes.find((n) => n.label === "訂單總覽。")!;
+    expect(node.tooltip).toBe("不換頁的操作：\n• 捲動頁面");
   });
 
   it("操作去向指向不存在的 Page 時丟 DiagramConsistencyError", () => {
     const broken: Workflow = {
-      project: "demo",
-      overview: "手改壞掉的去向。",
+      ...workflow,
+      pages: [
+        {
+          ...workflow.pages[0]!,
+          actions: [{ label: "點壞掉的連結", destination: to("SSO｜不存在") }],
+        },
+        ...workflow.pages.slice(1),
+      ],
+    };
+    expect(() => buildDiagram(broken)).toThrow(DiagramConsistencyError);
+  });
+});
+
+describe("buildDiagram warnings", () => {
+  it("孤立頁仍畫在自己的 Section 分頁上、標題帶警示前綴，並原文提醒", () => {
+    const diagram = buildDiagram(workflow);
+    const nodes = pageNamed(diagram, "稽核").nodes;
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]!.title).toBe(`${ISOLATED_MARK}稽核`);
+    expect(diagram.warnings).toContain(isolatedPagesWarning([to("SSO｜稽核")]));
+  });
+
+  it("非孤立頁的標題是階層路徑末段，不帶警示前綴", () => {
+    const diagram = buildDiagram(workflow);
+    const detail = pageNamed(diagram, "訂單").nodes.find((n) => n.label === "單筆訂單內容。")!;
+    expect(detail.title).toBe("詳情");
+    expect(detail.width).toBe(240);
+    expect(detail.height).toBe(100);
+  });
+
+  it("不再有「無終點」這條提醒——麵包屑樹永遠有葉節點", () => {
+    expect(buildDiagram(workflow).warnings.some((w) => w.includes("無終點"))).toBe(false);
+  });
+
+  it("Section 內切不出單根麵包屑樹時退回分層網格並提醒", () => {
+    // 路由都是平的：每頁自成一段，收成單一 Section 後長不出樹。
+    const flat: Workflow = {
+      project: "flat",
+      overview: "三頁互不從屬。",
       pages: [
         {
           route: "/",
-          purpose: "首頁",
-          content: "內容",
-          actions: [{ label: "前往幽靈頁", destination: { route: "/ghost" } }],
+          purpose: "首頁。",
+          content: "連結。",
+          actions: [{ label: "去關於", destination: { route: "/about" } }],
         },
+        { route: "/about", purpose: "介紹。", content: "文字。", actions: [] },
+        { route: "/contact", purpose: "聯絡。", content: "表單。", actions: [] },
       ],
     };
-    const call = () => buildDiagram(broken);
-    expect(call).toThrow(DiagramConsistencyError);
-    expect(call).toThrow(/ghost/);
+    const diagram = buildDiagram(flat);
+    expect(diagram.warnings).toContain(fallbackLayoutWarning(SINGLE_SECTION_NAME));
+    expect(diagram.pages.map((page) => page.name)).toEqual([
+      OVERVIEW_PAGE_NAME,
+      SINGLE_SECTION_NAME,
+    ]);
+    // 退路不生隱含節點，每個 Page 一個節點
+    expect(pageNamed(diagram, SINGLE_SECTION_NAME).nodes.every((n) => n.kind === "page")).toBe(true);
   });
+});
 
-  it("同一份 workflow 兩次組裝結果完全相同（確定性）", () => {
+describe("buildDiagram 座標", () => {
+  it("同一份 workflow 兩次組裝結果相同（確定性）", () => {
     expect(buildDiagram(workflow)).toEqual(buildDiagram(workflow));
   });
-});
 
-describe("buildDiagram layout", () => {
-  it("欄＝BFS 層：入口記號最左，同層的 Page 同欄不同列", () => {
+  it("節點都有正座標與尺寸", () => {
     const diagram = buildDiagram(workflow);
-    const entry = nodeById(diagram, ENTRY_NODE_ID);
-    const root = nodeById(diagram, "Page_root");
-    const about = nodeById(diagram, "Page_about");
-    const settings = nodeById(diagram, "Page_settings_個人資料");
-    expect(entry.x).toBeLessThan(root.x);
-    expect(root.x).toBeLessThan(about.x);
-    // /about 與 /settings（個人資料）皆為第 1 層：同欄、不同列
-    expect(settings.x).toBe(about.x);
-    expect(settings.y).not.toBe(about.y);
-  });
-
-  it("列＝該層內的 workflow.json 原順序：每層都從第一列重新開始", () => {
-    const diagram = buildDiagram(workflow);
-    // 第 0 層的 /（唯一一頁）與第 1 層的 /about（該層第一頁）落在同一列
-    expect(nodeById(diagram, "Page_about").y).toBe(nodeById(diagram, "Page_root").y);
-  });
-
-  it("孤立頁畫出來但不接入口記號，且排在主圖下方另一區", () => {
-    const diagram = buildDiagram(workflow);
-    const orphan = nodeById(diagram, "Page_orphan");
-    expect(diagram.edges.some((e) => e.targetId === "Page_orphan")).toBe(false);
-    const reachableMaxY = Math.max(
-      ...["Page_root", "Page_about", "Page_settings_個人資料"].map((id) => nodeById(diagram, id).y),
-    );
-    expect(orphan.y).toBeGreaterThan(reachableMaxY);
-  });
-});
-
-describe("buildDiagram 提醒", () => {
-  it("有孤立頁時提醒回頭補操作去向，並點出是哪一頁", () => {
-    expect(buildDiagram(workflow).warnings.some((w) => w.includes("/orphan"))).toBe(true);
-  });
-
-  it("有葉頁時不提醒無終點", () => {
-    expect(buildDiagram(workflow).warnings).not.toContain(NO_LEAF_PAGE_WARNING);
-  });
-
-  it("每頁都有換頁出口（純循環）時提醒此圖無終點", () => {
-    const cyclic: Workflow = {
-      project: "demo",
-      overview: "兩頁互連，走不完。",
-      pages: [
-        {
-          route: "/",
-          purpose: "首頁",
-          content: "內容",
-          actions: [{ label: "前往設定", destination: { route: "/settings" } }],
-        },
-        {
-          route: "/settings",
-          purpose: "設定",
-          content: "內容",
-          actions: [{ label: "回首頁", destination: { route: "/" } }],
-        },
-      ],
-    };
-    expect(buildDiagram(cyclic).warnings).toContain(NO_LEAF_PAGE_WARNING);
+    for (const node of diagram.pages.flatMap((page) => page.nodes)) {
+      expect(node.x).toBeGreaterThanOrEqual(0);
+      expect(node.y).toBeGreaterThanOrEqual(0);
+      expect(node.width).toBeGreaterThan(0);
+      expect(node.height).toBeGreaterThan(0);
+    }
+    expect(nodeById(diagram, GLOBAL_NAV_NODE_ID).kind).toBe("globalNav");
   });
 });

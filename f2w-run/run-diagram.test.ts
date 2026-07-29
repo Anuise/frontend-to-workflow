@@ -25,12 +25,22 @@ test("f2w-diagram 產出 workflow.drawio（Navigation diagram）", { timeout: 18
   const workflow = loadWorkflowForDiagram(OUTPUT_ROOT, PROJECT);
   const diagram = buildDiagram(workflow);
 
-  // 每個 Page 一個節點。
-  expect(diagram.nodes.filter((node) => node.kind === "page").length).toBe(workflow.pages.length);
+  // 每個 Page 一個節點，散在各 Section 分頁上。
+  const pageNodes = diagram.pages.flatMap((page) =>
+    page.nodes.filter((node) => node.kind === "page"),
+  );
+  expect(pageNodes.length).toBe(workflow.pages.length);
 
   const path = saveDiagram(OUTPUT_ROOT, PROJECT, renderDiagram(diagram));
+  const edges = diagram.pages.reduce((sum, page) => sum + page.edges.length, 0);
   // eslint-disable-next-line no-console
-  console.log(`SAVED ${path} | nodes=${diagram.nodes.length} edges=${diagram.edges.length}`);
+  console.log(
+    `SAVED ${path} | diagrams=${diagram.pages.length} pageNodes=${pageNodes.length} edges=${edges}`,
+  );
+  for (const page of diagram.pages) {
+    // eslint-disable-next-line no-console
+    console.log(`  PAGE ${page.name} nodes=${page.nodes.length} edges=${page.edges.length}`);
+  }
   for (const warning of diagram.warnings) {
     // eslint-disable-next-line no-console
     console.log(`WARNING ${warning}`);
@@ -43,11 +53,13 @@ test("f2w-diagram 產出 workflow.drawio（Navigation diagram）", { timeout: 18
     console.log("SKIP 匯出驗證：找不到 draw.io，設 DRAWIO_EXE 指向執行檔");
     return;
   }
+  // --all-pages：多分頁後只匯第 1 頁等於沒驗到 Section 分頁。
   const png = join(mkdtempSync(join(tmpdir(), "f2w-diagram-export-")), "nav.png");
-  execFileSync(exe, ["--export", "--format", "png", "--scale", "1", "--border", "20", "-o", png, path], {
-    timeout: 150_000,
-    stdio: "pipe",
-  });
+  execFileSync(
+    exe,
+    ["--export", "--format", "png", "--all-pages", "--scale", "1", "--border", "20", "-o", png, path],
+    { timeout: 150_000, stdio: "pipe" },
+  );
   expect(existsSync(png)).toBe(true);
   // eslint-disable-next-line no-console
   console.log(`EXPORT OK ${png} (${statSync(png).size} bytes)`);
