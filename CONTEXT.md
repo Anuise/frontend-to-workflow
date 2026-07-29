@@ -60,28 +60,36 @@ _Avoid_: 分工, 指派, assignment（泛稱）
 `workitems.xlsx` 是畫押欄留白的**範本**、可被重跑覆蓋；人須另存一份**工作副本**填畫押值，重跑只覆蓋範本、不動工作副本。
 _Avoid_: 空白表／填好的表（泛稱）
 
-## 供應商來源（Sourcing）
+## 分工歸屬（Sourcing）
+
+**權責泳道圖（Responsibility swimlane diagram）**:
+人畫的 draw.io 泳道圖：泳道＝分工方（Party）、格＝該方負責的元件、邊＝呼叫／資料流。**平台級共用文件、可跨 project**，是 `f2w-sourcing` 派工的主要依據；AI 直接讀圖推斷（不經確定性解析器），錯配靠人核兜底。
+_Avoid_: Navigation diagram（那是 f2w-diagram 的零推論產物，明文不含泳道）, 流程圖（泛稱）, BPMN 圖
+
+**Party（分工方）**:
+權責泳道圖中一條泳道代表的責任單位；自家與外部廠商一視同仁。分工方名集合 = 泳道名 ∪ Vendor spec 檔名。
+_Avoid_: vendor（保留給「有提供 Vendor spec 的分工方」）, 廠商（泛稱）, 團隊
 
 **Vendor（供應商）**:
-提供可直接接用之後端能力的外部第三方；以其 Vendor spec 檔名（去副檔名）為識別名。
+有提供 Vendor spec（OpenAPI）的分工方；以其 spec 檔名（去副檔名）為識別名。
 _Avoid_: 廠商, supplier, third-party（泛稱）
 
 **Vendor spec（供應商規格）**:
-單一 Vendor 的 OpenAPI／Swagger 契約檔；由人放在 Workspace 的 Project 內，觸發 `f2w-sourcing` 時強制指定路徑（可多個，一檔一家）。
+單一 Vendor 的 OpenAPI／Swagger 契約檔；由人提供、觸發 `f2w-sourcing` 時指定路徑（可選，0..n 份、一檔一家；與權責泳道圖至少給一種）。是派工的輔助證據。
 _Avoid_: API doc, 文件（泛稱）
 
 **Vendor capability（供應商能力）**:
-從 Vendor spec **確定性解析**出的單一可呼叫端點（endpoint ＋ 參數 ＋ 回應 schema）；是 Sourcing decision 配對的對象。機器解析而來，非 AI 抽取。
+從 Vendor spec **確定性解析**出的單一可呼叫端點（endpoint ＋ 參數 ＋ 回應 schema）；是 `vendorEndpoints` 配對的對象。機器解析而來，非 AI 抽取。
 _Avoid_: endpoint（單指 URL 路徑時可用）, feature
 
-**Sourcing decision（來源決策）**:
-為單一後端 Work item 定的來源歸屬，四選一：**vendor-direct**（直接呼叫供應商 API）／**vendor-adapted**（接回供應商資料、自建處理後再用）／**self-built**（自建）／**needs-investigation**（規格不明、無法判定）。由 `f2w-sourcing` 產出。
-_Avoid_: routing, 分派（泛稱）
+**Party assignment（分工歸屬）**:
+為單一後端 Work item 派定「誰做」：一個分工方名，或 **needs-investigation**（從圖與 spec 都判不出誰做、待查）。一筆工項橫跨兩方時拆成多筆**跨方接力**（`dependsOn` 串、`originItemId` 溯源）。由 `f2w-sourcing` 產出。
+_Avoid_: Sourcing decision／來源決策（四桶舊語）, vendor-direct, vendor-adapted, self-built（已廢值）, 分派（泛稱）
 
 **配對·待確認（Sourcing confirmation）**:
-Sourcing decision 由 AI 語意配對而來，一律標 `sourcingConfirmed: false`；與 Inferred work item 的「推論·待確認」是**兩個獨立維度**——一個問工項存不存在、一個問這條 API 配得對不對，開工前各自要人核。
+Party assignment 由 AI 語意配對而來，一律標 `sourcingConfirmed: false`；與 Inferred work item 的「推論·待確認」是**兩個獨立維度**——一個問工項存不存在、一個問派的方與配的 API 對不對，開工前各自要人核。
 _Avoid_: 待驗證（泛稱）
 
 **Sourced work breakdown（來源劃分）**:
-`f2w-sourcing` 產出的 `workitems-sourced.json`：把 Work breakdown 的後端工項貼上 Sourcing decision、並把 vendor-adapted 拆成「串接（fetch）＋自建處理（process）」兩筆後的**完整副本**（前端原封複製）。是可選插入步的產物，`f2w-breakdown-export` 有它就讀它。
+`f2w-sourcing` 產出的 `workitems-sourced.json`：把 Work breakdown 的後端工項貼上 Party assignment、並把跨方接力的工項拆成多筆後的**完整副本**（前端原封複製）。是可選插入步的產物，`f2w-breakdown-export` 有它就讀它。
 _Avoid_: 加工工項清單（泛稱）

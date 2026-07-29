@@ -5,7 +5,7 @@ description: frontend-to-workflow 管線的總說明。說明六個 step skill�
 
 # frontend-to-workflow：管線總說明
 
-把一個 **Pure-frontend** 的 **Project** 轉成「使用者視角的 **Workflow description**」，交付成 **Workbook**（`workflow.xlsx`）；並進一步把工作流程拆成可分派、可畫押的 **Work item**，交付成畫押欄留白的**範本** `workitems.xlsx`。整條管線拆成六個各自觸發的 step skill，外加一個位於 breakdown 與 breakdown-export 之間的**可選插入步** `f2w-sourcing`（有供應商 API 才插），以及一個與 `f2w-export` 併行的**分支步** `f2w-diagram`（同讀 `workflow.json`、出 draw.io **Navigation diagram**、不餵任何下游）。本 skill 只講**正確順序**與**檔案交接**，不執行任何一步。
+把一個 **Pure-frontend** 的 **Project** 轉成「使用者視角的 **Workflow description**」，交付成 **Workbook**（`workflow.xlsx`）；並進一步把工作流程拆成可分派、可畫押的 **Work item**，交付成畫押欄留白的**範本** `workitems.xlsx`。整條管線拆成六個各自觸發的 step skill，外加一個位於 breakdown 與 breakdown-export 之間的**可選插入步** `f2w-sourcing`（有權責泳道圖或供應商 API 才插），以及一個與 `f2w-export` 併行的**分支步** `f2w-diagram`（同讀 `workflow.json`、出 draw.io **Navigation diagram**、不餵任何下游）。本 skill 只講**正確順序**與**檔案交接**，不執行任何一步。
 
 ## 核心原則：不自動串跑
 
@@ -25,7 +25,7 @@ description: frontend-to-workflow 管線的總說明。說明六個 step skill�
 | 4 | `f2w-export` | `workflow.json`、`pages.json`、`screenshots/` | `output/<project>/workflow.xlsx` |
 | 分支（與步 4 併行） | `f2w-diagram` | `workflow.json` | `output/<project>/workflow.drawio` |
 | 5 | `f2w-breakdown` | `workflow.json` | `output/<project>/workitems.json` |
-| 5.5（可選） | `f2w-sourcing` | `workitems.json` ＋ 人指定的 Vendor spec（OpenAPI） | `output/<project>/workitems-sourced.json` |
+| 5.5（可選） | `f2w-sourcing` | `workitems.json` ＋ 人指定的權責泳道圖（draw.io）／Vendor spec（OpenAPI）——皆可選、至少一份 | `output/<project>/workitems-sourced.json` |
 | 6 | `f2w-breakdown-export` | `workitems-sourced.json`（在就讀）否則 `workitems.json` | `output/<project>/workitems.xlsx` |
 
 - **f2w-start**：偵測 Project 如何安裝／啟動／對外 port／base URL，經使用者確認後保存成 **Manifest**（`manifest.yml`），並把 Project 實際跑起來。
@@ -34,8 +34,8 @@ description: frontend-to-workflow 管線的總說明。說明六個 step skill�
 - **f2w-export**：組裝最終 **Workbook** `workflow.xlsx`：含「概述」sheet（放 Overview）與「逐頁工作流程」sheet（每列一個 Page，含 Workflow description 且嵌入該頁截圖縮圖）。（`workflow.json` 不含截圖檔名，故本步需另讀 `pages.json` 取 Page → 截圖對應。）
 - **f2w-diagram**（分支步，與 f2w-export 併行）：讀 `workflow.json`，把每個 **Page** 映成一個節點（id 由正規化 route(+tab) 衍生、標籤為頁面用途）、每個換頁操作映成一條帶說明的有向邊（一頁多出口就直接拉多條邊、不插分歧節點），不換頁的操作寫進該節點的 tooltip；`pages[0]` 接一個入口記號，葉頁就是沒有出邊、不補終點節點。確定性算出座標（欄＝從入口 BFS 的層級、列＝該層內的原順序）後產出 **Navigation diagram** `workflow.drawio`，用 draw.io 開啟。**零推論**，不引入新的待確認維度；全圖無終點（純循環）與孤立頁會照實回報。決策見 ADR-0005 與 ADR-0006。
 - **f2w-breakdown**：讀 `workflow.json`，依每個 Page 的 Workflow description 把工作拆成**前端 Work item**（觀察自畫面）與**後端 Work item**（AI 推論、一律標「推論·待確認」），產出 **Work breakdown** `workitems.json`。承諾型欄位（估時／優先級／RACI／簽核／狀態）刻意不進 json。
-- **f2w-sourcing**（可選插入步，有供應商 API 才跑）：讀 `workitems.json`，對照人提供的 **Vendor spec**（OpenAPI／Swagger，觸發時指定路徑），為每個後端 Work item 定 **Sourcing decision**（vendor-direct 直接呼叫／vendor-adapted 接回自建處理／self-built 自建／needs-investigation 待查），vendor-adapted 拆成「串接＋自建處理」兩筆，產出 **Sourced work breakdown** `workitems-sourced.json`（前端原封複製、後端貼標＋拆項）。配對一律標 `sourcingConfirmed: false`，與後端既有的「推論·待確認」是兩個獨立待確認維度。決策見 ADR-0004。
-- **f2w-breakdown-export**：讀 `workitems-sourced.json`（有就讀）否則退回 `workitems.json`，組裝最終交付**範本** `workitems.xlsx`（「概述」「前端工項」「後端工項」三個 sheet，畫押欄留白、不嵌截圖；讀到 sourced 檔時後端 sheet 多帶來源決策欄）。範本可被重跑覆蓋；人須另存一份**工作副本**填**權責畫押**值（RACI／估時／優先級／簽核／狀態），重跑只覆蓋範本、不動工作副本。
+- **f2w-sourcing**（可選插入步，有權責泳道圖或供應商 API 才跑）：讀 `workitems.json`，對照人提供的**權責泳道圖**（draw.io，泳道＝分工方）與 **Vendor spec**（OpenAPI／Swagger）——兩種輸入皆可選、至少一份、觸發時指定路徑——為每個後端 Work item 定 **Party assignment（分工歸屬）**：派給一個分工方（泳道名或 spec 供應商名，如 mobagel／gary／leadtek）或 `needs-investigation` 待查；一筆工項橫跨兩方時拆成多筆**跨方接力**（`dependsOn` 串、`originItemId` 溯源），產出 **Sourced work breakdown** `workitems-sourced.json`（前端原封複製、後端貼標＋拆項）。配對一律標 `sourcingConfirmed: false`，與後端既有的「推論·待確認」是兩個獨立待確認維度。決策見 ADR-0007（ADR-0004 部分被其取代）。
+- **f2w-breakdown-export**：讀 `workitems-sourced.json`（有就讀）否則退回 `workitems.json`，組裝最終交付**範本** `workitems.xlsx`（「概述」「前端工項」「後端工項」三個 sheet，畫押欄留白、不嵌截圖；讀到 sourced 檔時後端 sheet 多帶分工歸屬欄）。範本可被重跑覆蓋；人須另存一份**工作副本**填**權責畫押**值（RACI／估時／優先級／簽核／狀態），重跑只覆蓋範本、不動工作副本。
 
 ## 缺前置檔：請先跑上一步
 
