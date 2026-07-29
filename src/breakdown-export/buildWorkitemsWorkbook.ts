@@ -2,8 +2,14 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import ExcelJS from "exceljs";
 import type { PageId } from "../contracts/page";
-import type { WorkItem, Workitems } from "../contracts/workitems";
+import type {
+  AdaptationRole,
+  SourcedBackendItem,
+  SourcingBucket,
+} from "../contracts/sourcedWorkitems";
+import type { WorkItem } from "../contracts/workitems";
 import { contractPath } from "../output";
+import { type ExportWorkitems, isSourcedWorkitems } from "./inputs";
 
 /** 三個 sheet 的名稱（對外常數，供測試與讀取者參照）。 */
 export const OVERVIEW_SHEET = "概述";
@@ -40,6 +46,35 @@ export const FRONTEND_COLUMNS = [
 
 /** 後端工項 sheet 的欄序：同前端，額外一欄「推論狀態」。 */
 export const BACKEND_COLUMNS = [...FRONTEND_COLUMNS, INFERRED_STATUS_COLUMN] as const;
+
+/** 讀到 workitems-sourced.json 時，後端 sheet 額外呈現的來源決策欄。 */
+export const SOURCING_COLUMNS = [
+  "來源",
+  "串接角色",
+  "供應商",
+  "供應商端點",
+  "來源狀態",
+] as const;
+
+/** 後端工項 sheet（sourced 版）的欄序：同後端，再加來源決策欄。 */
+export const BACKEND_SOURCED_COLUMNS = [...BACKEND_COLUMNS, ...SOURCING_COLUMNS] as const;
+
+/** 四個來源桶在表上的中文字樣。 */
+export const SOURCING_LABELS: Record<SourcingBucket, string> = {
+  "vendor-direct": "供應商直呼",
+  "vendor-adapted": "供應商接回自建",
+  "self-built": "自建",
+  "needs-investigation": "待查",
+};
+
+/** vendor-adapted 拆出兩筆的角色字樣。 */
+export const ADAPTATION_ROLE_LABELS: Record<AdaptationRole, string> = {
+  fetch: "串接",
+  process: "自建處理",
+};
+
+/** 來源決策由 AI 語意配對而來，一律待人核（契約層 sourcingConfirmed 恆為 false）。 */
+export const SOURCING_STATUS_LABEL = "配對·待確認";
 
 /** 承諾型欄位：由人在工作副本填，範本一律留白（只有表頭）。 */
 export const BLANK_COLUMNS = [
@@ -78,6 +113,13 @@ const SCOPE_COL = 4;
 const ACCEPTANCE_COL = 5;
 const DEPENDS_COL = 6;
 const RISK_COL = 15;
+// 後端專屬欄（接在前端 15 欄之後）。
+const INFERRED_STATUS_COL = FRONTEND_COLUMNS.length + 1;
+const SOURCING_COL = INFERRED_STATUS_COL + 1;
+const ADAPTATION_ROLE_COL = SOURCING_COL + 1;
+const VENDOR_COL = ADAPTATION_ROLE_COL + 1;
+const VENDOR_ENDPOINTS_COL = VENDOR_COL + 1;
+const SOURCING_STATUS_COL = VENDOR_ENDPOINTS_COL + 1;
 // AI 內容型欄（需自動換行）。
 const WRAP_COLS = [TITLE_COL, SCOPE_COL, ACCEPTANCE_COL, DEPENDS_COL, RISK_COL];
 
@@ -113,22 +155,45 @@ function columnWidth(header: string): number {
       return 24;
     case "工項ID":
       return 20;
+    case "供應商端點":
+      return 40;
     case INFERRED_STATUS_COLUMN:
+    case "來源":
+    case "來源狀態":
+    case "供應商":
       return 14;
     default:
       return 12; // 承諾型窄欄
   }
 }
 
+/** 帶來源決策的後端工項才填來源決策欄（來源／串接角色／供應商／端點／來源狀態）。 */
+function addSourcingCells(row: ExcelJS.Row, item: SourcedBackendItem): void {
+  row.getCell(SOURCING_COL).value = SOURCING_LABELS[item.sourcing];
+  if (item.adaptationRole) {
+    row.getCell(ADAPTATION_ROLE_COL).value = ADAPTATION_ROLE_LABELS[item.adaptationRole];
+  }
+  if (item.vendor) {
+    row.getCell(VENDOR_COL).value = item.vendor;
+  }
+  if (item.vendorEndpoints.length) {
+    const cell = row.getCell(VENDOR_ENDPOINTS_COL);
+    cell.value = item.vendorEndpoints.join("\n");
+    cell.alignment = { wrapText: true, vertical: "top" };
+  }
+  row.getCell(SOURCING_STATUS_COL).value = SOURCING_STATUS_LABEL;
+}
+
 /**
  * 加一個工項 sheet：標頭列 + 每筆工項一列。
- * AI 內容型欄填值；承諾型欄留白（不設值）；withInferredStatus 時額外填「推論狀態」欄。
+ * AI 內容型欄填值；承諾型欄留白（不設值）；withInferredStatus 時額外填「推論狀態」欄；
+ * 工項帶 sourcing 時再填來源決策欄。
  */
 function addItemsSheet(
   wb: ExcelJS.Workbook,
   sheetName: string,
   columns: readonly string[],
-  items: readonly WorkItem[],
+  items: readonly (WorkItem | SourcedBackendItem)[],
   withInferredStatus: boolean,
 ): void {
   const ws = wb.addWorksheet(sheetName);
@@ -146,7 +211,10 @@ function addItemsSheet(
     // 第 7～14 欄（承諾型）刻意不設值——範本留白，由人在工作副本填。
     row.getCell(RISK_COL).value = item.risk;
     if (withInferredStatus) {
-      row.getCell(columns.length).value = INFERRED_STATUS_LABEL; // 額外的「推論狀態」欄
+      row.getCell(INFERRED_STATUS_COL).value = INFERRED_STATUS_LABEL; // 額外的「推論狀態」欄
+    }
+    if ("sourcing" in item) {
+      addSourcingCells(row, item);
     }
     for (const col of WRAP_COLS) {
       row.getCell(col).alignment = { wrapText: true, vertical: "top" };
@@ -155,7 +223,7 @@ function addItemsSheet(
 }
 
 /** 概述 sheet：整體敘述 ＋ 工項統計 ＋ RACI／狀態／估時／優先級 圖例。 */
-function addOverviewSheet(wb: ExcelJS.Workbook, workitems: Workitems): void {
+function addOverviewSheet(wb: ExcelJS.Workbook, workitems: ExportWorkitems): void {
   const ws = wb.addWorksheet(OVERVIEW_SHEET);
   ws.columns = [{ width: 100 }];
 
@@ -182,6 +250,16 @@ function addOverviewSheet(wb: ExcelJS.Workbook, workitems: Workitems): void {
     `優先級：${PRIORITY_LEGEND.join("／")}`,
   ];
 
+  // 讀到 sourced 檔時補一段來源決策圖例（與推論狀態是兩個獨立的待確認維度）。
+  if (isSourcedWorkitems(workitems)) {
+    lines.push(
+      "",
+      "來源圖例",
+      Object.values(SOURCING_LABELS).join("／"),
+      `來源狀態一律「${SOURCING_STATUS_LABEL}」：AI 依 Vendor spec 語意配對，開工前須人核。`,
+    );
+  }
+
   lines.forEach((text, index) => {
     const cell = ws.getCell(index + 1, 1);
     cell.value = text;
@@ -194,13 +272,21 @@ function addOverviewSheet(wb: ExcelJS.Workbook, workitems: Workitems): void {
  * 由 workitems 組出記憶體中的 Workbook（確定性核心，不碰 fs、不嵌截圖）。
  * - 「概述」sheet：整體敘述、工項統計與 RACI／狀態／估時／優先級 圖例。
  * - 「前端工項」sheet：每列一筆前端 Work item；AI 內容型欄填值、承諾型欄留白。
- * - 「後端工項」sheet：同前端，額外「推論狀態」欄一律顯示「推論·待確認」。
+ * - 「後端工項」sheet：同前端，額外「推論狀態」欄一律顯示「推論·待確認」；
+ *   來源是 workitems-sourced.json 時再加來源決策欄（來源／串接角色／供應商／端點／來源狀態）。
  */
-export function buildWorkitemsWorkbook(workitems: Workitems): ExcelJS.Workbook {
+export function buildWorkitemsWorkbook(workitems: ExportWorkitems): ExcelJS.Workbook {
+  const sourced = isSourcedWorkitems(workitems);
   const wb = new ExcelJS.Workbook();
   addOverviewSheet(wb, workitems);
   addItemsSheet(wb, FRONTEND_SHEET, FRONTEND_COLUMNS, workitems.frontend, false);
-  addItemsSheet(wb, BACKEND_SHEET, BACKEND_COLUMNS, workitems.backend, true);
+  addItemsSheet(
+    wb,
+    BACKEND_SHEET,
+    sourced ? BACKEND_SOURCED_COLUMNS : BACKEND_COLUMNS,
+    workitems.backend,
+    true,
+  );
   return wb;
 }
 
