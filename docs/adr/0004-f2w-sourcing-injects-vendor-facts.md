@@ -1,5 +1,7 @@
 # 新增 f2w-sourcing 可選插入步：注入供應商事實，為後端工項定來源決策
 
+> **部分被 ADR-0007 取代**：四桶值域（vendor-direct／vendor-adapted／self-built／needs-investigation）、spec 必備、adaptationRole 充要條件已改為「分工歸屬」模型；可選插入步定位、`sourcingConfirmed` 維度、拆項換冪等的取捨仍有效。見 `0007-party-assignment-from-swimlane-diagram.md`。
+
 在 `f2w-breakdown` 與 `f2w-breakdown-export` 之間新增一個**可選插入步** `f2w-sourcing`：吃人提供的 **Vendor spec**（OpenAPI／Swagger），為每個後端 Work item 定一個 **Sourcing decision**（vendor-direct／vendor-adapted／self-built／needs-investigation），產出 `workitems-sourced.json`。這**再一次刻意逸出** ADR-0002 的地基——ADR-0002 讓後端工項全由 AI 推論（無後端事實可觀察），本步反過來**注入一份後端事實**（供應商能力），讓「哪些後端工作根本不必自建」有據可依。
 
 ## Considered Options

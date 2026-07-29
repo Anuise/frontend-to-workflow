@@ -5,6 +5,7 @@ export * from "./start/index";
 export * from "./capture/index";
 export * from "./describe/index";
 export * from "./export/index";
+export * from "./diagram/index";
 export * from "./breakdown/index";
 export * from "./breakdown-export/index";
 // export 與 breakdown-export 各自定義同值的 OVERVIEW_SHEET（皆為「概述」）；
