@@ -1,22 +1,28 @@
 import { expect, test } from "vitest";
+import { NEEDS_INVESTIGATION } from "../src/contracts/sourcedWorkitems";
 import {
-  type SourcingDecision,
+  type PartyAssignment,
   buildSourcedWorkitems,
   loadWorkitemsForSourcing,
   parseVendorSpec,
   saveSourcedWorkitems,
 } from "../src/sourcing";
 
-// f2w-sourcing 驅動：讀回 workitems.json 與五份 Vendor spec，逐後端工項定來源決策，
-// 經 buildSourcedWorkitems 硬底線把關後落地 workitems-sourced.json。
+// f2w-sourcing 驅動：讀回 workitems.json、權責泳道圖的泳道名與五份 Vendor spec，
+// 逐後端工項定分工歸屬（ADR-0007），經 buildSourcedWorkitems 硬底線把關後落地
+// workitems-sourced.json。
 const OUTPUT_ROOT = "output";
 const PROJECT = "new_0724_AI六大模組管理平台_桃園智發會_最新版";
+
+// 權責泳道圖 workspace/spec/桃園刑大ai_platform.drawio 的泳道名（AI 讀圖抽出）。
+const PARTIES = ["mobagel", "gary", "leadtek"];
+
 const SPECS = [
-  "workspace/spec/aidms-openapi.json",
-  "workspace/spec/Gateway-API.json",
-  "workspace/spec/AI-security.json",
-  "workspace/spec/Model-Maintenance.json",
-  "workspace/spec/IDP-service.json",
+  "workspace/spec/aidms/aidms-openapi.json",
+  "workspace/spec/gary/Gateway-API.json",
+  "workspace/spec/gary/AI-security.json",
+  "workspace/spec/gary/Model-Maintenance.json",
+  "workspace/spec/gary/IDP-service.json",
 ];
 
 const AIDMS = "aidms-openapi";
@@ -24,46 +30,62 @@ const GATEWAY = "Gateway-API";
 const SECURITY = "AI-security";
 const MM = "Model-Maintenance";
 
-/** 直接呼叫供應商。 */
-const direct = (itemId: string, vendor: string, endpoints: string[]): SourcingDecision => ({
+/** 平台自建方（泳道圖裡的前端與後端平台本體）。 */
+const SELF = "mobagel";
+
+/** 各份 spec 是哪個分工方提供的：AIDMS 在 leadtek 泳道，其餘三份在 gary 泳道。 */
+const SPEC_OWNER: Record<string, string> = {
+  [AIDMS]: "leadtek",
+  [GATEWAY]: "gary",
+  [SECURITY]: "gary",
+  [MM]: "gary",
+};
+
+/** 派給提供該 spec 的分工方，直接用它的端點。 */
+const direct = (itemId: string, vendor: string, endpoints: string[]): PartyAssignment => ({
   itemId,
-  sourcing: "vendor-direct",
+  assignedParty: SPEC_OWNER[vendor]!,
   vendor,
   vendorEndpoints: endpoints,
 });
 
-/** 自建。 */
-const self = (itemId: string): SourcingDecision => ({ itemId, sourcing: "self-built" });
+/** 派給平台自建方。 */
+const self = (itemId: string): PartyAssignment => ({ itemId, assignedParty: SELF });
 
-/** 規格不明，待與供應商釐清。 */
-const investigate = (itemId: string): SourcingDecision => ({
+/** 泳道圖與 spec 都判不出誰做，待查。 */
+const investigate = (itemId: string): PartyAssignment => ({
   itemId,
-  sourcing: "needs-investigation",
+  assignedParty: NEEDS_INVESTIGATION,
 });
 
 type Part = { title: string; scope: string; acceptance: string };
 
-/** 接回自建處理：拆成串接端點（-F）與自建處理層（-P）兩筆。 */
-const adapted = (
+/** 跨方接力：供應商方出端點（-F），平台自建方接回處理（-P）。 */
+const relay = (
   itemId: string,
   vendor: string,
   endpoints: string[],
   fetchPart: Part,
   processPart: Part,
-): SourcingDecision => ({
+): PartyAssignment => ({
   itemId,
-  sourcing: "vendor-adapted",
-  vendor,
-  vendorEndpoints: endpoints,
-  fetch: { id: `${itemId}-F`, ...fetchPart },
-  process: { id: `${itemId}-P`, ...processPart },
+  parts: [
+    {
+      id: `${itemId}-F`,
+      ...fetchPart,
+      assignedParty: SPEC_OWNER[vendor]!,
+      vendor,
+      vendorEndpoints: endpoints,
+    },
+    { id: `${itemId}-P`, ...processPart, assignedParty: SELF },
+  ],
 });
 
-const DECISIONS: SourcingDecision[] = [
+const ASSIGNMENTS: PartyAssignment[] = [
   // 身分與權限：aidms 提供帳密登入與工作階段，SSO 本身五份 spec 都沒有。
   investigate("BE-AUTH-1"),
   direct("BE-AUTH-2", AIDMS, ["POST /api/v1/login"]),
-  adapted(
+  relay(
     "BE-AUTH-3",
     GATEWAY,
     ["POST /rbac/v1/permissions/query"],
@@ -82,7 +104,7 @@ const DECISIONS: SourcingDecision[] = [
 
   // 模型倉庫：aidms 管檔案與分段上傳，Model-Maintenance 管版本治理。
   direct("BE-MODEL-1", AIDMS, ["GET /api/v1/models"]),
-  adapted(
+  relay(
     "BE-MODEL-2",
     AIDMS,
     [
@@ -101,7 +123,7 @@ const DECISIONS: SourcingDecision[] = [
       acceptance: "副檔名與內容不符時在 finalize 前擋下，前端看得到進度。",
     },
   ),
-  adapted(
+  relay(
     "BE-MODEL-3",
     AIDMS,
     [
@@ -127,7 +149,7 @@ const DECISIONS: SourcingDecision[] = [
   ]),
 
   // 叢集資源：aidms 有節點配置與 Grafana proxy，推播頻率是平台自己的事。
-  adapted(
+  relay(
     "BE-CLUSTER-1",
     AIDMS,
     ["GET /api/v1/grafana/{path}", "GET /api/v1/nodes/{nodeID}/allocation"],
@@ -149,7 +171,7 @@ const DECISIONS: SourcingDecision[] = [
   ]),
 
   // 申請流程：AI-security 的 HITL 提供人工審核任務載體，申請單本身的欄位與狀態機是平台自有。
-  adapted(
+  relay(
     "BE-APPLY-1",
     SECURITY,
     ["POST /hitl/v1/tasks"],
@@ -176,7 +198,7 @@ const DECISIONS: SourcingDecision[] = [
 
   // 審核與核發：Gateway 掌管 Project／Team／Client 與 Virtual Key，額度也在它身上。
   self("BE-REVIEW-1"),
-  adapted(
+  relay(
     "BE-REVIEW-2",
     GATEWAY,
     [
@@ -200,7 +222,7 @@ const DECISIONS: SourcingDecision[] = [
   ]),
   direct("BE-REVIEW-4", SECURITY, ["POST /hitl/v1/tasks/{hitl_task_id}/decisions"]),
   investigate("BE-REVIEW-5"),
-  adapted(
+  relay(
     "BE-REVIEW-6",
     GATEWAY,
     ["GET /llm/v1/projects/{project_id}/clients"],
@@ -222,7 +244,7 @@ const DECISIONS: SourcingDecision[] = [
     "GET /api/v1/projects/{id}/resource_list/allocation",
   ]),
   direct("BE-PROJ-2", AIDMS, ["POST /api/v1/projects"]),
-  adapted(
+  relay(
     "BE-PROJ-3",
     AIDMS,
     ["PUT /api/v1/projects/{project_id}/resources", "GET /api/v1/nodes/{nodeID}/allocation"],
@@ -247,7 +269,7 @@ const DECISIONS: SourcingDecision[] = [
   direct("BE-SVC-1", AIDMS, ["POST /api/v1/projects/{projectID}/jobs/llm"]),
   self("BE-SVC-2"),
   investigate("BE-SVC-3"),
-  adapted(
+  relay(
     "BE-SVC-4",
     AIDMS,
     ["PATCH /api/v1/projects/{project_id}/jobs/llm/{job_id}"],
@@ -263,7 +285,7 @@ const DECISIONS: SourcingDecision[] = [
     },
   ),
   direct("BE-SVC-5", AIDMS, ["GET /api/v1/projects/{projectID}/jobs/llm/{jobID}"]),
-  adapted(
+  relay(
     "BE-SVC-6",
     AIDMS,
     ["GET /api/v1/projects/{projectID}/jobs/llm/{jobID}/description", "GET /api/v1/grafana/{path}"],
@@ -288,7 +310,7 @@ const DECISIONS: SourcingDecision[] = [
   direct("BE-SVC-10", AIDMS, ["PUT /api/v1/projects/{projectID}/jobs/llm/{jobID}/resources"]),
   direct("BE-SVC-11", AIDMS, ["DELETE /api/v1/projects/{projectID}/jobs/llm/{jobID}"]),
   direct("BE-SVC-12", AIDMS, ["GET /api/v1/projects/{projectID}/jobs/llm/{jobID}/logs"]),
-  adapted(
+  relay(
     "BE-SVC-13",
     AIDMS,
     ["GET /api/v1/projects/{projectID}/jobs/llm/{jobID}/terminal"],
@@ -306,7 +328,7 @@ const DECISIONS: SourcingDecision[] = [
   direct("BE-SVC-14", AIDMS, ["POST /api/v1/projects/{projectID}/jobs/llm/{jobID}/commit"]),
 
   // 安全監控：runtime-guard 是攔截執行點；關鍵字清單維護在五份 spec 內找不到對應。
-  adapted(
+  relay(
     "BE-SEC-1",
     SECURITY,
     ["GET /audit/v1/events"],
@@ -330,7 +352,7 @@ const DECISIONS: SourcingDecision[] = [
 
   // 追蹤與報表：AI-security 的 trace 與 usage-summary 供資料，報表口徑與匯出自建。
   direct("BE-TRACE-1", SECURITY, ["GET /trace-link/v1/langfuse/traces"]),
-  adapted(
+  relay(
     "BE-TRACE-2",
     SECURITY,
     [
@@ -348,7 +370,7 @@ const DECISIONS: SourcingDecision[] = [
       acceptance: "未授權者看不到原始 payload 的敏感欄位。",
     },
   ),
-  adapted(
+  relay(
     "BE-TRACE-3",
     SECURITY,
     ["GET /trace-link/v1/litellm/usage-summary"],
@@ -373,7 +395,7 @@ const DECISIONS: SourcingDecision[] = [
     "PATCH /api/v1/users/{userID}",
     "PATCH /api/v1/projects/{project_id}/users/{user_id}/role",
   ]),
-  adapted(
+  relay(
     "BE-ACCT-5",
     AIDMS,
     ["DELETE /api/v1/users/{userID}"],
@@ -398,17 +420,22 @@ const DECISIONS: SourcingDecision[] = [
   ]),
 ];
 
-test("f2w-sourcing：對照 Vendor spec 定來源決策並落地 workitems-sourced.json", () => {
+test("f2w-sourcing：對照權責泳道圖與 Vendor spec 定分工歸屬並落地 workitems-sourced.json", () => {
   const workitems = loadWorkitemsForSourcing(OUTPUT_ROOT, PROJECT);
   const capabilities = SPECS.flatMap((s) => parseVendorSpec(s));
 
-  expect(DECISIONS).toHaveLength(workitems.backend.length);
+  expect(ASSIGNMENTS).toHaveLength(workitems.backend.length);
 
-  const sourced = buildSourcedWorkitems(workitems, capabilities, DECISIONS);
+  const sourced = buildSourcedWorkitems(workitems, PARTIES, capabilities, ASSIGNMENTS);
 
-  const adaptedCount = DECISIONS.filter((d) => d.sourcing === "vendor-adapted").length;
-  expect(sourced.backend).toHaveLength(workitems.backend.length + adaptedCount);
+  // 拆項只多出「parts 筆數 − 1」列（原 id 由接力最後一筆取代）
+  const relayExtra = ASSIGNMENTS.reduce((n, a) => n + (a.parts ? a.parts.length - 1 : 0), 0);
+  expect(sourced.backend).toHaveLength(workitems.backend.length + relayExtra);
   expect(sourced.frontend).toEqual(workitems.frontend);
+  const assigned = sourced.backend.every(
+    (i) => PARTIES.includes(i.assignedParty) || i.assignedParty === NEEDS_INVESTIGATION,
+  );
+  expect(assigned).toBe(true);
 
   saveSourcedWorkitems(OUTPUT_ROOT, PROJECT, sourced);
 });
