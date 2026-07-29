@@ -10,7 +10,7 @@ description: frontend-to-workflow 管線的第六步（最後一步）。讀取 
 前置：`output/<project>/workitems.json`（由 f2w-breakdown 產出）。缺件即中止並提示先跑 f2w-breakdown。
 產出：`output/<project>/workitems.xlsx`。
 
-> **可選 f2w-sourcing 的接法（規劃中，隨 f2w-sourcing 實作）**：若可選插入步 `f2w-sourcing` 已跑、`output/<project>/workitems-sourced.json` 存在，本步**優先讀 sourced 檔**、不在才退回 `workitems.json`（見 ADR-0004、ADR-0007）。讀到 sourced 檔時，「後端工項」sheet 額外呈現分工歸屬欄：「派工方」（`assignedParty`；`needs-investigation` 顯示「待查」）｜`vendor`｜`vendorEndpoints`｜「來源狀態」（`sourcingConfirmed=false` 顯示「配對·待確認」）。跨方接力拆出的工項就是普通多列，接力關係由「依賴」欄（`dependsOn`）呈現。無分工圖也無供應商的專案沒有 sourced 檔，行為與現況一致。
+> **可選 f2w-sourcing 的接法**：若可選插入步 `f2w-sourcing` 已跑、`output/<project>/workitems-sourced.json` 存在，本步**優先讀 sourced 檔**、不在才退回 `workitems.json`（見 ADR-0004、ADR-0007）。讀到 sourced 檔時，「後端工項」sheet 在「推論狀態」之後額外呈現分工歸屬欄：派工方（`assignedParty`；`needs-investigation` 顯示「待查」）｜供應商｜供應商端點｜來源狀態（`sourcingConfirmed=false` 一律顯示「配對·待確認」）；「概述」sheet 補一段分工圖例（列出本批出現的派工方）。跨方接力拆出的工項就是普通多列，接力關係由「依賴」欄（`dependsOn`）呈現。無分工圖也無供應商的專案沒有 sourced 檔，行為與現況一致。
 假設：沿用 ADR-0002——後端 Work item 一律是 AI 推論的 **Inferred work item**，在「後端工項」sheet 以「推論狀態＝推論·待確認」明示，開工前的正確性責任落在人工確認。
 
 **為何畫押欄留白**：估時／優先級／RACI／簽核日期／狀態是多人協作的**承諾型**權責畫押值，不由 AI 代填、也不進 `workitems.json`（見 f2w-breakdown 與 CONTEXT.md「權責畫押」「範本／工作副本」）。本步只出**表頭在、值空**的範本；畫押值由人在另存的**工作副本（Working copy）**填。
@@ -18,12 +18,12 @@ description: frontend-to-workflow 管線的第六步（最後一步）。讀取 
 ## 流程
 
 1. **讀取前置** — `loadWorkitemsForExport(outputRoot, project)`
-   - 確認 `workitems.json` 在，讀回並經契約驗證後回傳 `Workitems`（前端／後端 Work item）。
-   - 缺 `workitems.json` 丟 `MissingPrerequisiteError`（提示先跑 f2w-breakdown），**中止**。
+   - `workitems-sourced.json` 在就讀它（回傳 `SourcedWorkitems`），不在才讀 `workitems.json`（回傳 `Workitems`），皆經契約驗證。
+   - 兩者都缺丟 `MissingPrerequisiteError`（提示先跑 f2w-breakdown），**中止**。
 2. **組裝 Workbook** — `buildWorkitemsWorkbook(workitems)`（確定性核心，不碰 fs、不嵌截圖）
    - 「概述」sheet：整體敘述 ＋ 工項統計（前端筆數／後端筆數／推論筆數）＋ RACI 圖例（A 當責＝單一人、R 負責＝可多人、C 諮詢、I 告知）、狀態圖例（未開始／進行中／審查中／完成／擱置）、估時單位（人天）與優先級（P0／P1／P2）。
    - 「前端工項」sheet：每列一筆前端 Work item。AI 內容型欄填值：工項ID｜來源Page｜標題｜範疇｜驗收標準｜依賴｜風險備註；承諾型欄留白：估時｜優先級｜R｜A｜C｜I｜簽核日期｜狀態。
-   - 「後端工項」sheet：欄位同前端，額外一欄「推論狀態」一律顯示「推論·待確認」。
+   - 「後端工項」sheet：欄位同前端，額外一欄「推論狀態」一律顯示「推論·待確認」；來源是 sourced 檔時再加分工歸屬四欄（見上方註記）。
    - 此函式不碰檔案，可獨立單元測試。
 3. **保存** — `saveWorkitemsWorkbook(outputRoot, project, workbook)`
    - 把組好的 Workbook 寫成 `output/<project>/workitems.xlsx`，回傳寫入路徑。
@@ -34,4 +34,4 @@ description: frontend-to-workflow 管線的第六步（最後一步）。讀取 
 
 ## 對應實作
 
-`src/breakdown-export/`：`loadWorkitemsForExport`（前置檢查＋讀回 workitems.json）、`buildWorkitemsWorkbook`（組出三個 sheet、承諾型欄留白、後端加「推論狀態」欄的確定性核心）、`saveWorkitemsWorkbook`（寫出 workitems.xlsx）。契約見 `src/contracts/workitems.ts`；路徑見 `src/output.ts`（`contractPath`，契約名 `workitemsWorkbook`＝`workitems.xlsx`）。決策見 ADR-0002（後端工項為 AI 推論）。Excel 產生使用 `exceljs`。
+`src/breakdown-export/`：`loadWorkitemsForExport`（sourced 檔優先、缺才退回 workitems.json）、`isSourcedWorkitems`（判定這批工項是否帶分工歸屬）、`buildWorkitemsWorkbook`（組出三個 sheet、承諾型欄留白、後端加「推論狀態」與 sourced 時的分工歸屬欄的確定性核心）、`saveWorkitemsWorkbook`（寫出 workitems.xlsx）。契約見 `src/contracts/workitems.ts` 與 `src/contracts/sourcedWorkitems.ts`；路徑見 `src/output.ts`（`contractPath`，契約名 `workitemsWorkbook`＝`workitems.xlsx`）。決策見 ADR-0002（後端工項為 AI 推論）、ADR-0004（sourced 檔在就讀）與 ADR-0007（分工歸屬取代四桶來源決策）。Excel 產生使用 `exceljs`。

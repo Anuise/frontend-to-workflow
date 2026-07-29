@@ -3,17 +3,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
+import type { SourcedWorkitems } from "../contracts/sourcedWorkitems";
 import type { Workitems } from "../contracts/workitems";
 import { contractPath } from "../output";
 import {
   BACKEND_SHEET,
+  BACKEND_SOURCED_COLUMNS,
   BLANK_COLUMNS,
   FRONTEND_COLUMNS,
   FRONTEND_SHEET,
   INFERRED_STATUS_COLUMN,
   INFERRED_STATUS_LABEL,
+  NEEDS_INVESTIGATION_LABEL,
   OVERVIEW_SHEET,
   RACI_LEGEND,
+  SOURCING_STATUS_LABEL,
   STATUS_LEGEND,
   buildWorkitemsWorkbook,
   saveWorkitemsWorkbook,
@@ -147,6 +151,86 @@ describe("buildWorkitemsWorkbook", () => {
     for (const name of [OVERVIEW_SHEET, FRONTEND_SHEET, BACKEND_SHEET]) {
       expect(wb.getWorksheet(name)!.getImages()).toHaveLength(0);
     }
+  });
+});
+
+// 同一批工項的 sourced 版：一筆配到供應商端點、一筆派給沒給 spec 的方、一筆待查。
+const sourced: SourcedWorkitems = {
+  project: "demo",
+  frontend: workitems.frontend,
+  backend: [
+    {
+      ...workitems.backend[0]!,
+      assignedParty: "sample-vendor",
+      vendor: "sample-vendor",
+      vendorEndpoints: ["POST /api/v1/profile", "GET /api/v1/profile"],
+      sourcingConfirmed: false,
+    },
+    {
+      ...workitems.backend[0]!,
+      id: "BE-2",
+      title: "驗證規則",
+      assignedParty: "mobagel",
+      vendorEndpoints: [],
+      sourcingConfirmed: false,
+    },
+    {
+      ...workitems.backend[0]!,
+      id: "BE-3-P",
+      title: "個人資料遮罩層",
+      assignedParty: "needs-investigation",
+      vendorEndpoints: [],
+      sourcingConfirmed: false,
+      originItemId: "BE-3",
+    },
+  ],
+};
+
+describe("buildWorkitemsWorkbook（讀到 sourced 檔）", () => {
+  it("後端 sheet 在推論狀態後加分工歸屬欄（AC：sourced 後端欄位）", () => {
+    const ws = buildWorkitemsWorkbook(sourced).getWorksheet(BACKEND_SHEET)!;
+    const header = (ws.getRow(1).values as unknown[]).slice(1).map(String);
+    expect(header).toEqual([...BACKEND_SOURCED_COLUMNS]);
+    // 前 15 欄仍是前端那組、推論狀態仍在第 16 欄
+    expect(header.slice(0, FRONTEND_COLUMNS.length)).toEqual([...FRONTEND_COLUMNS]);
+    expect(header[FRONTEND_COLUMNS.length]).toBe(INFERRED_STATUS_COLUMN);
+    expect(ws.rowCount).toBe(sourced.backend.length + 1);
+  });
+
+  it("每列填分工歸屬事實，來源狀態一律配對·待確認（AC：來源狀態）", () => {
+    const ws = buildWorkitemsWorkbook(sourced).getWorksheet(BACKEND_SHEET)!;
+    const header = (ws.getRow(1).values as unknown[]).slice(1).map(String);
+    const cell = (r: number, col: string) =>
+      String(ws.getRow(r).getCell(header.indexOf(col) + 1).value ?? "");
+
+    // 配到某份 spec 的端點：派工方／供應商／端點皆填
+    expect(cell(2, "派工方")).toBe("sample-vendor");
+    expect(cell(2, "供應商")).toBe("sample-vendor");
+    expect(cell(2, "供應商端點")).toContain("POST /api/v1/profile");
+    // 派給沒給 spec 的方：供應商與端點留空（vendor 與派工脫鉤）
+    expect(cell(3, "派工方")).toBe("mobagel");
+    expect(cell(3, "供應商")).toBe("");
+    expect(cell(3, "供應商端點")).toBe("");
+    // needs-investigation：顯示「待查」、不得攀附供應商
+    expect(cell(4, "派工方")).toBe(NEEDS_INVESTIGATION_LABEL);
+    expect(cell(4, "供應商")).toBe("");
+    expect(cell(4, "供應商端點")).toBe("");
+    // 三列的推論狀態與來源狀態並存（兩個獨立的待確認維度）
+    for (let r = 2; r <= ws.rowCount; r++) {
+      expect(cell(r, INFERRED_STATUS_COLUMN)).toBe(INFERRED_STATUS_LABEL);
+      expect(cell(r, "來源狀態")).toBe(SOURCING_STATUS_LABEL);
+    }
+  });
+
+  it("前端 sheet 不受影響、概述補分工圖例（AC：sourced 概述）", () => {
+    const wb = buildWorkitemsWorkbook(sourced);
+    const feHeader = (wb.getWorksheet(FRONTEND_SHEET)!.getRow(1).values as unknown[]).slice(1);
+    expect(feHeader.map(String)).toEqual([...FRONTEND_COLUMNS]);
+    const blob = cellTexts(wb.getWorksheet(OVERVIEW_SHEET)!).join("\n");
+    expect(blob).toContain(SOURCING_STATUS_LABEL);
+    // 分工圖例列出本批出現的派工方（含待查）
+    expect(blob).toContain("mobagel");
+    expect(blob).toContain(NEEDS_INVESTIGATION_LABEL);
   });
 });
 
