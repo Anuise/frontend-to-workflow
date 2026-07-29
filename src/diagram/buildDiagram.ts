@@ -28,12 +28,23 @@ export interface DiagramEdge {
   targetId: string;
 }
 
+/** 圈住同父 tab 子頁的框：它們彼此可直接切換，不畫成邊。 */
+export interface DiagramGroup {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** draw.io 的一個分頁：總覽頁，或一個 Section。 */
 export interface DiagramPage {
   id: string;
   name: string;
   nodes: DiagramNode[];
   edges: DiagramEdge[];
+  groups: DiagramGroup[];
 }
 
 /** 組好的 Navigation diagram：一頁總覽 ＋ 每個 Section 一頁，以及需要人回頭處理的提醒。 */
@@ -77,6 +88,12 @@ const SECTION_ID_PREFIX = "Section_";
 /** 隱含節點（麵包屑有這一段但沒有對應 Page）的 id 前綴。 */
 const IMPLIED_ID_PREFIX = "Implied_";
 
+/** tooltip 裡「子頁回上層」那一段的抬頭。 */
+export const RETURN_TOOLTIP_HEADER = "返回操作：";
+
+/** tab 群組框的標題；同父 tab 之間可直接切換，不畫成邊。 */
+export const TAB_GROUP_LABEL = "可互相切換的 tab";
+
 /** 某 Section 切不出單根的麵包屑樹、已退回分層網格的提醒。 */
 export function fallbackLayoutWarning(name: string): string {
   return `Section「${name}」切不出 ≥2 層階層，已退回分層網格；若非本意，回頭調整 f2w-capture 的 route／tab 命名。`;
@@ -100,6 +117,8 @@ const SECTION_HEIGHT = 60;
 const COLUMN_SPACING = 260;
 const ROW_SPACING = 140;
 const BAND_GAP = 200; // 主圖與孤立頁區之間的留白
+const GROUP_PADDING = 16;
+const GROUP_HEADER = 22;
 const ORIGIN_X = 60;
 const ORIGIN_Y = 80;
 
@@ -233,6 +252,7 @@ function buildTree(section: Section): TreeNode {
 class PageBuilder {
   readonly nodes: DiagramNode[] = [];
   readonly edges: DiagramEdge[] = [];
+  readonly groups: DiagramGroup[] = [];
 
   constructor(
     private readonly id: string,
@@ -260,8 +280,32 @@ class PageBuilder {
     this.edges.push({ id: this.nextEdgeId(), sourceId, targetId, label });
   }
 
+  /** 圈住一組節點：框住它們的外接矩形，上緣多留一條放標題。 */
+  addGroup(id: string, label: string, memberIds: readonly string[]): void {
+    const members = this.nodes.filter((node) => memberIds.includes(node.id));
+    if (members.length === 0) return;
+    const left = Math.min(...members.map((node) => node.x));
+    const top = Math.min(...members.map((node) => node.y));
+    const right = Math.max(...members.map((node) => node.x + node.width));
+    const bottom = Math.max(...members.map((node) => node.y + node.height));
+    this.groups.push({
+      id,
+      label,
+      x: left - GROUP_PADDING,
+      y: top - GROUP_PADDING - GROUP_HEADER,
+      width: right - left + GROUP_PADDING * 2,
+      height: bottom - top + GROUP_PADDING * 2 + GROUP_HEADER,
+    });
+  }
+
   toPage(): DiagramPage {
-    return { id: this.id, name: this.name, nodes: this.nodes, edges: this.edges };
+    return {
+      id: this.id,
+      name: this.name,
+      nodes: this.nodes,
+      edges: this.edges,
+      groups: this.groups,
+    };
   }
 }
 
@@ -326,13 +370,41 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
   overview.addEdge(ENTRY_NODE_ID, sectionIds.get(sectionOf.get(pageIdKey(workflow.pages[0]!))!)!);
 
   // ---- 邊的分類 ----
+  const treeReady = new Map(sections.map((section) => [section, canFormTree(section)] as const));
+  const relativePath = (id: PageId, section: Section) =>
+    hierarchyPath(id).slice(section.depth + 1);
   const globalNavTargets = new Set<Section>();
   const crossSection: Array<{ from: Section; to: Section; label: string }> = [];
+  /** 子→祖先的返回操作，降級成來源節點 tooltip 的一段。 */
+  const returnLabels = new Map<string, string[]>();
+  /** 有兄弟互跳的父節點；只有這些父節點的子頁才圈 tab 群組。 */
+  const tabGroupParents = new Set<string>();
+  const parentKey = (section: Section, path: readonly string[]) =>
+    `${sectionIds.get(section)!} ${path.join("")}`;
+
   for (const page of workflow.pages) {
     const from = sectionOf.get(pageIdKey(page))!;
     for (const action of navigatingActions(page)) {
       const to = sectionOf.get(pageIdKey(action.destination))!;
       if (from === to) {
+        const source = relativePath(page, from);
+        const target = relativePath(action.destination, to);
+        if (treeReady.get(from)) {
+          // 子 → 祖先：返回／取消／關閉。樹上父節點就在左邊，不畫線。
+          if (target.length < source.length && target.every((seg, i) => seg === source[i])) {
+            const key = pageIdKey(page);
+            returnLabels.set(key, [...(returnLabels.get(key) ?? []), action.label]);
+            continue;
+          }
+          // 兄弟 ↔ 兄弟：同一組 tab 互跳，改用一個框圈起來。
+          if (
+            source.length === target.length &&
+            source.slice(0, -1).join("") === target.slice(0, -1).join("")
+          ) {
+            tabGroupParents.add(parentKey(from, source.slice(0, -1)));
+            continue;
+          }
+        }
         builders
           .get(from)!
           .addEdge(
@@ -361,12 +433,21 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
   // ---- 各 Section 分頁：麵包屑樹，父在左、子在右；列＝深度優先走訪順序 ----
   const warnings: string[] = [];
   const usedImpliedIds = new Set<string>();
-  const nodeOfPage = (page: WorkflowPage) => ({
-    id: pageIds.get(pageIdKey(page))!,
-    kind: "page" as const,
-    label: page.purpose,
-    tooltip: stayingTooltip(page),
-  });
+  const nodeOfPage = (page: WorkflowPage) => {
+    const returns = returnLabels.get(pageIdKey(page)) ?? [];
+    const sections_ = [
+      stayingTooltip(page),
+      returns.length > 0
+        ? [RETURN_TOOLTIP_HEADER, ...returns.map((label) => `• ${label}`)].join("\n")
+        : undefined,
+    ].filter((part): part is string => part !== undefined);
+    return {
+      id: pageIds.get(pageIdKey(page))!,
+      kind: "page" as const,
+      label: page.purpose,
+      tooltip: sections_.length > 0 ? sections_.join("\n") : undefined,
+    };
+  };
 
   const depths = bfsDepths(workflow);
   const isolated = workflow.pages.filter((page) => !depths.has(pageIdKey(page)));
@@ -401,24 +482,29 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
     }
 
     let row = 0;
-    const visit = (node: TreeNode, column: number): void => {
+    let groupSeq = 0;
+    const visit = (node: TreeNode, path: readonly string[], column: number): string => {
       const current = row++;
-      if (node.page) {
-        builder.addNode(nodeOfPage(node.page), column, current);
-      } else {
-        builder.addNode(
-          {
-            id: uniqueId(`${IMPLIED_ID_PREFIX}${toIdSlug(node.segment)}`, usedImpliedIds),
-            kind: "implied",
-            label: node.segment,
-          },
-          column,
-          current,
+      const id = node.page
+        ? pageIds.get(pageIdKey(node.page))!
+        : uniqueId(`${IMPLIED_ID_PREFIX}${toIdSlug(node.segment)}`, usedImpliedIds);
+      if (node.page) builder.addNode(nodeOfPage(node.page), column, current);
+      else builder.addNode({ id, kind: "implied", label: node.segment }, column, current);
+
+      const childIds = node.children.map((child) =>
+        visit(child, [...path, child.segment], column + 1),
+      );
+      // 這組兄弟之間真的有互跳才圈框；平行子頁不該被誤標成可切換。
+      if (tabGroupParents.has(parentKey(section, path))) {
+        builder.addGroup(
+          `${sectionIds.get(section)!}_TabGroup_${++groupSeq}`,
+          TAB_GROUP_LABEL,
+          childIds,
         );
       }
-      for (const child of node.children) visit(child, column + 1);
+      return id;
     };
-    visit(buildTree(section), 0);
+    visit(buildTree(section), [], 0);
   }
 
   if (isolated.length > 0) warnings.push(isolatedPagesWarning(isolated));

@@ -1,7 +1,13 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { contractPath } from "../output";
-import type { DiagramEdge, DiagramNode, DiagramPage, NavigationDiagram } from "./buildDiagram";
+import type {
+  DiagramEdge,
+  DiagramGroup,
+  DiagramNode,
+  DiagramPage,
+  NavigationDiagram,
+} from "./buildDiagram";
 
 /** draw.io 的節點樣式：入口是小綠圓、全域導覽是虛線灰底、Section 方框是總覽頁的入口、Page 是圓角方框。 */
 const NODE_STYLE: Record<DiagramNode["kind"], string> = {
@@ -18,6 +24,10 @@ const NODE_STYLE: Record<DiagramNode["kind"], string> = {
 /** 邊一律走直角、繞路交給 draw.io 自己算；label 壓白底才不被線劃穿。 */
 const EDGE_STYLE =
   "edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;fontSize=8;labelBackgroundColor=#ffffff;";
+
+/** tab 群組框的樣式：淡色背板、標題靠上，不擋住裡面的節點。 */
+const GROUP_STYLE =
+  "rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#f9f7fd;strokeColor=#9673a6;verticalAlign=top;align=left;spacingLeft=8;fontSize=9;fontColor=#7a5c95;";
 
 /** 版面右下再留的白邊。 */
 const PAGE_MARGIN = 200;
@@ -65,6 +75,15 @@ function renderNode(node: DiagramNode): string {
   ].join("\n");
 }
 
+/** tab 群組框：先於成員輸出，才會落在它們底下當背板。 */
+function renderGroup(group: DiagramGroup): string {
+  return [
+    `        <mxCell id="${group.id}" value="${escapeXml(group.label)}" style="${GROUP_STYLE}" vertex="1" parent="1">`,
+    `          <mxGeometry x="${group.x}" y="${group.y}" width="${group.width}" height="${group.height}" as="geometry" />`,
+    "        </mxCell>",
+  ].join("\n");
+}
+
 function renderEdge(edge: DiagramEdge): string {
   return [
     `        <mxCell id="${edge.id}" value="${edge.label ? escapeXml(edge.label) : ""}" style="${EDGE_STYLE}" edge="1" parent="1" source="${edge.sourceId}" target="${edge.targetId}">`,
@@ -79,14 +98,16 @@ function renderEdge(edge: DiagramEdge): string {
  * 刻意不寫 draw.io 存檔時會補的 modified／etag／agent／version：那些帶時間戳，會破壞確定性。
  */
 function renderPage(page: DiagramPage): string[] {
-  const width = Math.max(0, ...page.nodes.map((node) => node.x + node.width)) + PAGE_MARGIN;
-  const height = Math.max(0, ...page.nodes.map((node) => node.y + node.height)) + PAGE_MARGIN;
+  const boxes = [...page.nodes, ...page.groups];
+  const width = Math.max(0, ...boxes.map((box) => box.x + box.width)) + PAGE_MARGIN;
+  const height = Math.max(0, ...boxes.map((box) => box.y + box.height)) + PAGE_MARGIN;
   return [
     `  <diagram id="${escapeXml(page.id)}" name="${escapeXml(page.name)}">`,
     `    <mxGraphModel dx="0" dy="0" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${width}" pageHeight="${height}" math="0" shadow="0">`,
     "      <root>",
     '        <mxCell id="0" />',
     '        <mxCell id="1" parent="0" />',
+    ...page.groups.map(renderGroup),
     ...page.nodes.map(renderNode),
     ...page.edges.map(renderEdge),
     "      </root>",

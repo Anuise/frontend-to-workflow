@@ -6,6 +6,8 @@ import {
   GLOBAL_NAV_NODE_ID,
   type NavigationDiagram,
   OVERVIEW_PAGE_NAME,
+  RETURN_TOOLTIP_HEADER,
+  TAB_GROUP_LABEL,
   buildDiagram,
   fallbackLayoutWarning,
   isolatedPagesWarning,
@@ -38,13 +40,13 @@ const workflow: Workflow = {
       purpose: "訂單總覽。",
       content: "訂單表格。",
       actions: [
-        { label: "點某筆訂單", destination: to("SSO｜訂單｜詳情") },
+        { label: "點某筆訂單", destination: to("SSO｜訂單｜清單｜詳情") },
         { label: "點側欄「設定」", destination: to("SSO｜設定｜個人") },
         { label: "捲動頁面", destination: null },
       ],
     },
     {
-      ...to("SSO｜訂單｜詳情"),
+      ...to("SSO｜訂單｜清單｜詳情"),
       purpose: "單筆訂單內容。",
       content: "明細欄位。",
       actions: [{ label: "按「返回清單」", destination: to("SSO｜訂單｜清單") }],
@@ -168,13 +170,33 @@ describe("buildDiagram 邊的分類", () => {
     expect(transitions[0]!.label).toBe("點「一般登入」直接進到某張單");
   });
 
-  it("同 Section 的邊畫在該 Section 的分頁上", () => {
+  it("同 Section 的推進邊（父→子）畫在該 Section 的分頁上", () => {
     const diagram = buildDiagram(workflow);
-    expect(pageNamed(diagram, "訂單").edges.map((edge) => edge.label)).toEqual([
-      "點某筆訂單",
-      "按「返回清單」",
-    ]);
-    expect(pageNamed(diagram, "設定").edges.map((edge) => edge.label)).toEqual(["切到「安全」"]);
+    expect(pageNamed(diagram, "訂單").edges.map((edge) => edge.label)).toEqual(["點某筆訂單"]);
+  });
+
+  it("子→祖先的返回邊不畫，label 進來源節點 tooltip 的返回操作段", () => {
+    const diagram = buildDiagram(workflow);
+    const detail = pageNamed(diagram, "訂單").nodes.find((n) => n.label === "單筆訂單內容。")!;
+    expect(detail.tooltip).toBe(`${RETURN_TOOLTIP_HEADER}\n• 按「返回清單」`);
+  });
+
+  it("兄弟互跳不畫邊，改用 tab 群組框圈起來", () => {
+    const diagram = buildDiagram(workflow);
+    const settings = pageNamed(diagram, "設定");
+    expect(settings.edges).toHaveLength(0);
+    expect(settings.groups.map((group) => group.label)).toEqual([TAB_GROUP_LABEL]);
+    // 框住兩個 tab 子頁
+    const group = settings.groups[0]!;
+    const members = settings.nodes.filter(
+      (node) => node.x >= group.x && node.x + node.width <= group.x + group.width,
+    );
+    expect(members.map((node) => node.label)).toEqual(["編輯個人資料。", "改密碼。"]);
+  });
+
+  it("沒有互跳的平行子頁不圈框", () => {
+    // 訂單底下兩個「清單」是平行子頁，彼此沒有互跳
+    expect(pageNamed(buildDiagram(workflow), "訂單").groups).toHaveLength(0);
   });
 
   it("不換頁的操作寫進該節點的 tooltip，不生節點也不生邊", () => {
