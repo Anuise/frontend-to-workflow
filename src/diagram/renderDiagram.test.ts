@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 import type { Workflow } from "../contracts/workflow";
 import { contractPath } from "../output";
 import { MissingPrerequisiteError } from "../prerequisites";
-import { NO_LEAF_PAGE_WARNING, buildDiagram } from "./buildDiagram";
+import {
+  NO_LEAF_PAGE_WARNING,
+  type NavigationDiagram,
+  OVERVIEW_PAGE_NAME,
+  buildDiagram,
+} from "./buildDiagram";
 import { loadWorkflowForDiagram } from "./inputs";
 import { renderDiagram, saveDiagram } from "./renderDiagram";
 
@@ -32,14 +37,34 @@ function countOf(xml: string, pattern: RegExp): number {
   return xml.match(pattern)?.length ?? 0;
 }
 
+/** 節點與邊散在各分頁上，數量斷言要先攤平。 */
+const allNodes = (diagram: NavigationDiagram) => diagram.pages.flatMap((page) => page.nodes);
+const allEdges = (diagram: NavigationDiagram) => diagram.pages.flatMap((page) => page.edges);
+
 describe("renderDiagram", () => {
   it("產出 draw.io 的 mxfile／mxGraphModel 明文 XML", () => {
     const xml = renderDiagram(buildDiagram(workflow));
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
     expect(xml).toContain('<mxfile host="f2w-diagram">');
-    expect(xml).toContain('<diagram id="Diagram_1" name="demo">');
+    expect(xml).toContain(`<diagram id="Diagram_1" name="${OVERVIEW_PAGE_NAME}">`);
     expect(xml).toContain("<mxGraphModel ");
     expect(xml).toContain("</mxfile>");
+  });
+
+  it("每個分頁一個 <diagram>：第 1 頁總覽，之後每個 Section 一頁", () => {
+    const diagram = buildDiagram(workflow);
+    const xml = renderDiagram(diagram);
+    expect(countOf(xml, /<diagram /g)).toBe(diagram.pages.length);
+    expect(countOf(xml, /<mxGraphModel /g)).toBe(diagram.pages.length);
+    for (const page of diagram.pages) {
+      expect(xml).toContain(`<diagram id="${page.id}" name="${page.name}">`);
+    }
+  });
+
+  it("Section 方框帶 draw.io 的分頁連結", () => {
+    const diagram = buildDiagram(workflow);
+    const box = diagram.pages[0]!.nodes.find((node) => node.kind === "section")!;
+    expect(renderDiagram(diagram)).toContain(`link="data:page/id,${box.linkToPageId}"`);
   });
 
   it("不寫 draw.io 存檔才會補的時間戳屬性（確定性前提）", () => {
@@ -52,11 +77,13 @@ describe("renderDiagram", () => {
   it("每個節點一個 vertex（含 root 的兩個骨架 cell）、每條邊一個 edge", () => {
     const diagram = buildDiagram(workflow);
     const xml = renderDiagram(diagram);
-    expect(countOf(xml, /vertex="1"/g)).toBe(diagram.nodes.length);
-    expect(countOf(xml, /edge="1"/g)).toBe(diagram.edges.length);
-    expect(countOf(xml, /<mxGeometry /g)).toBe(diagram.nodes.length + diagram.edges.length);
-    expect(xml).toContain('<mxCell id="0" />');
-    expect(xml).toContain('<mxCell id="1" parent="0" />');
+    expect(countOf(xml, /vertex="1"/g)).toBe(allNodes(diagram).length);
+    expect(countOf(xml, /edge="1"/g)).toBe(allEdges(diagram).length);
+    expect(countOf(xml, /<mxGeometry /g)).toBe(
+      allNodes(diagram).length + allEdges(diagram).length,
+    );
+    expect(countOf(xml, /<mxCell id="0" \/>/g)).toBe(diagram.pages.length);
+    expect(countOf(xml, /<mxCell id="1" parent="0" \/>/g)).toBe(diagram.pages.length);
   });
 
   it("入口與 Page 各用自己的樣式，邊走直角路由", () => {
@@ -117,8 +144,8 @@ describe("端到端（真實 fixtures）", () => {
     const loaded = loadWorkflowForDiagram(join(process.cwd(), "fixtures"), "contracts");
     const diagram = buildDiagram(loaded);
     // 每個真實 Page 一個節點，含帶中文 tab 的兩頁
-    expect(diagram.nodes.filter((n) => n.kind === "page")).toHaveLength(loaded.pages.length);
-    expect(diagram.nodes.some((n) => n.id === "Page_settings_個人資料")).toBe(true);
+    expect(allNodes(diagram).filter((n) => n.kind === "page")).toHaveLength(loaded.pages.length);
+    expect(allNodes(diagram).some((n) => n.id === "Page_settings_個人資料")).toBe(true);
     // 這份 fixture 每頁都有換頁出口＝純循環：沒有葉頁，提醒無終點
     expect(diagram.warnings).toContain(NO_LEAF_PAGE_WARNING);
 
@@ -126,7 +153,7 @@ describe("端到端（真實 fixtures）", () => {
     const path = saveDiagram(root, "contracts", renderDiagram(diagram));
     const written = readFileSync(path, "utf8");
     expect(path.endsWith("workflow.drawio")).toBe(true);
-    expect(countOf(written, /vertex="1"/g)).toBe(diagram.nodes.length);
+    expect(countOf(written, /vertex="1"/g)).toBe(allNodes(diagram).length);
     rmSync(root, { recursive: true, force: true });
   });
 });

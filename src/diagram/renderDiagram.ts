@@ -1,11 +1,15 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { contractPath } from "../output";
-import type { DiagramEdge, DiagramNode, NavigationDiagram } from "./buildDiagram";
+import type { DiagramEdge, DiagramNode, DiagramPage, NavigationDiagram } from "./buildDiagram";
 
-/** draw.io 的節點樣式：入口是小綠圓、Page 是圓角方框。 */
+/** draw.io 的節點樣式：入口是小綠圓、全域導覽是虛線灰底、Section 方框是總覽頁的入口、Page 是圓角方框。 */
 const NODE_STYLE: Record<DiagramNode["kind"], string> = {
   entry: "ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;",
+  globalNav:
+    "rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=9;",
+  section:
+    "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;",
   page: "rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;",
 };
 
@@ -36,16 +40,22 @@ function escapeTooltip(value: string): string {
 function renderNode(node: DiagramNode): string {
   const geometry = `<mxGeometry x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" as="geometry" />`;
   const style = NODE_STYLE[node.kind];
-  if (!node.tooltip) {
+  if (!node.tooltip && !node.linkToPageId) {
     return [
       `        <mxCell id="${node.id}" value="${escapeXml(node.label)}" style="${style}" vertex="1" parent="1">`,
       `          ${geometry}`,
       "        </mxCell>",
     ].join("\n");
   }
-  // 帶 tooltip 的節點要包一層 UserObject——mxCell 本身沒有 tooltip 屬性
+  // 帶 tooltip 或分頁連結的節點要包一層 UserObject——mxCell 本身沒有這兩個屬性
+  const attrs = [
+    `id="${node.id}"`,
+    `label="${escapeXml(node.label)}"`,
+    ...(node.tooltip ? [`tooltip="${escapeTooltip(node.tooltip)}"`] : []),
+    ...(node.linkToPageId ? [`link="data:page/id,${escapeXml(node.linkToPageId)}"`] : []),
+  ].join(" ");
   return [
-    `        <UserObject id="${node.id}" label="${escapeXml(node.label)}" tooltip="${escapeTooltip(node.tooltip)}">`,
+    `        <UserObject ${attrs}>`,
     `          <mxCell style="${style}" vertex="1" parent="1">`,
     `            ${geometry}`,
     "          </mxCell>",
@@ -66,22 +76,28 @@ function renderEdge(edge: DiagramEdge): string {
  * 同一份 diagram 兩次序列化字串完全相同——確定性、重跑幂等。
  * 刻意不寫 draw.io 存檔時會補的 modified／etag／agent／version：那些帶時間戳，會破壞確定性。
  */
-export function renderDiagram(diagram: NavigationDiagram): string {
-  const width = Math.max(0, ...diagram.nodes.map((node) => node.x + node.width)) + PAGE_MARGIN;
-  const height = Math.max(0, ...diagram.nodes.map((node) => node.y + node.height)) + PAGE_MARGIN;
+function renderPage(page: DiagramPage): string[] {
+  const width = Math.max(0, ...page.nodes.map((node) => node.x + node.width)) + PAGE_MARGIN;
+  const height = Math.max(0, ...page.nodes.map((node) => node.y + node.height)) + PAGE_MARGIN;
   return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<mxfile host="f2w-diagram">',
-    `  <diagram id="Diagram_1" name="${escapeXml(diagram.name)}">`,
+    `  <diagram id="${escapeXml(page.id)}" name="${escapeXml(page.name)}">`,
     `    <mxGraphModel dx="0" dy="0" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${width}" pageHeight="${height}" math="0" shadow="0">`,
     "      <root>",
     '        <mxCell id="0" />',
     '        <mxCell id="1" parent="0" />',
-    ...diagram.nodes.map(renderNode),
-    ...diagram.edges.map(renderEdge),
+    ...page.nodes.map(renderNode),
+    ...page.edges.map(renderEdge),
     "      </root>",
     "    </mxGraphModel>",
     "  </diagram>",
+  ];
+}
+
+export function renderDiagram(diagram: NavigationDiagram): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<mxfile host="f2w-diagram">',
+    ...diagram.pages.flatMap(renderPage),
     "</mxfile>",
     "",
   ].join("\n");
