@@ -10,6 +10,8 @@ const NODE_STYLE: Record<DiagramNode["kind"], string> = {
     "rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=9;",
   section:
     "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;",
+  implied:
+    "rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#9673a6;fontSize=10;fontStyle=2;",
   page: "rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;",
 };
 

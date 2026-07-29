@@ -7,8 +7,10 @@ import {
   type NavigationDiagram,
   OVERVIEW_PAGE_NAME,
   buildDiagram,
+  fallbackLayoutWarning,
   isolatedPagesWarning,
 } from "./buildDiagram";
+import { SINGLE_SECTION_NAME } from "./sections";
 
 const R = "/index";
 const to = (tab: string) => ({ route: R, tab });
@@ -91,14 +93,18 @@ describe("buildDiagram 分頁結構", () => {
     ]);
   });
 
-  it("每個 Page 一個節點，落在自己的 Section 分頁上", () => {
+  it("每個 Page 一個節點，落在自己的 Section 分頁上，父在左子在右", () => {
     const diagram = buildDiagram(workflow);
-    expect(pageNamed(diagram, "訂單").nodes.map((node) => node.label)).toEqual([
-      "訂單總覽。",
-      "單筆訂單內容。",
-      "一般身分的訂單總覽。",
+    const order = pageNamed(diagram, "訂單").nodes;
+    // 麵包屑沒有「訂單」這一頁，所以樹根是隱含節點；其餘依深度優先走訪
+    expect(order.map((node) => [node.kind, node.label])).toEqual([
+      ["implied", "訂單"],
+      ["page", "訂單總覽。"],
+      ["page", "單筆訂單內容。"],
+      ["page", "一般身分的訂單總覽。"],
     ]);
-    expect(pageNamed(diagram, "設定").nodes).toHaveLength(2);
+    expect(order[0]!.x).toBeLessThan(order[1]!.x);
+    expect(pageNamed(diagram, "設定").nodes.filter((node) => node.kind === "page")).toHaveLength(2);
   });
 
   it("分頁 id 互不重複，邊 id 跨分頁也不重複", () => {
@@ -173,7 +179,7 @@ describe("buildDiagram 邊的分類", () => {
 
   it("不換頁的操作寫進該節點的 tooltip，不生節點也不生邊", () => {
     const diagram = buildDiagram(workflow);
-    const node = pageNamed(diagram, "訂單").nodes[0]!;
+    const node = pageNamed(diagram, "訂單").nodes.find((n) => n.label === "訂單總覽。")!;
     expect(node.tooltip).toBe("不換頁的操作：\n• 捲動頁面");
   });
 
@@ -199,8 +205,34 @@ describe("buildDiagram warnings", () => {
     expect(diagram.warnings).toContain(isolatedPagesWarning([to("SSO｜稽核")]));
   });
 
-  it("有葉頁時不提醒無終點", () => {
+  it("不再有「無終點」這條提醒——麵包屑樹永遠有葉節點", () => {
     expect(buildDiagram(workflow).warnings.some((w) => w.includes("無終點"))).toBe(false);
+  });
+
+  it("Section 內切不出單根麵包屑樹時退回分層網格並提醒", () => {
+    // 路由都是平的：每頁自成一段，收成單一 Section 後長不出樹。
+    const flat: Workflow = {
+      project: "flat",
+      overview: "三頁互不從屬。",
+      pages: [
+        {
+          route: "/",
+          purpose: "首頁。",
+          content: "連結。",
+          actions: [{ label: "去關於", destination: { route: "/about" } }],
+        },
+        { route: "/about", purpose: "介紹。", content: "文字。", actions: [] },
+        { route: "/contact", purpose: "聯絡。", content: "表單。", actions: [] },
+      ],
+    };
+    const diagram = buildDiagram(flat);
+    expect(diagram.warnings).toContain(fallbackLayoutWarning(SINGLE_SECTION_NAME));
+    expect(diagram.pages.map((page) => page.name)).toEqual([
+      OVERVIEW_PAGE_NAME,
+      SINGLE_SECTION_NAME,
+    ]);
+    // 退路不生隱含節點，每個 Page 一個節點
+    expect(pageNamed(diagram, SINGLE_SECTION_NAME).nodes.every((n) => n.kind === "page")).toBe(true);
   });
 });
 

@@ -26,6 +26,8 @@ export function hierarchyPath(id: PageId): string[] {
 /** 一條完整的路線：一群 Page ＋ 它們共同的名字；對應 draw.io 的一個分頁。 */
 export interface Section {
   name: string;
+  /** 這個 Section 是切在階層路徑的第幾段；Section 內的樹從第 depth+1 段起算。 */
+  depth: number;
   pages: WorkflowPage[];
 }
 
@@ -46,7 +48,7 @@ function bucketize(pages: readonly WorkflowPage[], depth: number): Section[] {
     const name = segmentAt(page, depth);
     let bucket = byName.get(name);
     if (!bucket) {
-      bucket = { name, pages: [] };
+      bucket = { name, depth, pages: [] };
       byName.set(name, bucket);
       buckets.push(bucket);
     }
@@ -110,7 +112,7 @@ export function groupIntoSections(pages: readonly WorkflowPage[]): Section[] {
   }
 
   if (buckets.length === pages.length) {
-    return [{ name: SINGLE_SECTION_NAME, pages: [...pages] }];
+    return [{ name: SINGLE_SECTION_NAME, depth: 0, pages: [...pages] }];
   }
   return buckets;
 }

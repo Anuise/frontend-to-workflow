@@ -5,12 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { Workflow } from "../contracts/workflow";
 import { contractPath } from "../output";
 import { MissingPrerequisiteError } from "../prerequisites";
-import {
-  NO_LEAF_PAGE_WARNING,
-  type NavigationDiagram,
-  OVERVIEW_PAGE_NAME,
-  buildDiagram,
-} from "./buildDiagram";
+import { type NavigationDiagram, OVERVIEW_PAGE_NAME, buildDiagram } from "./buildDiagram";
 import { loadWorkflowForDiagram } from "./inputs";
 import { renderDiagram, saveDiagram } from "./renderDiagram";
 
@@ -146,8 +141,8 @@ describe("端到端（真實 fixtures）", () => {
     // 每個真實 Page 一個節點，含帶中文 tab 的兩頁
     expect(allNodes(diagram).filter((n) => n.kind === "page")).toHaveLength(loaded.pages.length);
     expect(allNodes(diagram).some((n) => n.id === "Page_settings_個人資料")).toBe(true);
-    // 這份 fixture 每頁都有換頁出口＝純循環：沒有葉頁，提醒無終點
-    expect(diagram.warnings).toContain(NO_LEAF_PAGE_WARNING);
+    // 這份 fixture 的路由是平的：長不出單根麵包屑樹，退回分層網格並提醒
+    expect(diagram.warnings.some((warning) => warning.includes("退回分層網格"))).toBe(true);
 
     const root = mkdtempSync(join(tmpdir(), "f2w-diagram-e2e-"));
     const path = saveDiagram(root, "contracts", renderDiagram(diagram));

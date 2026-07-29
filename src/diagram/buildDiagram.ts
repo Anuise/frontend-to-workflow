@@ -1,9 +1,9 @@
 import { type PageId, pageIdKey } from "../contracts/page";
 import type { Workflow, WorkflowAction, WorkflowPage } from "../contracts/workflow";
-import { type Section, groupIntoSections } from "./sections";
+import { type Section, groupIntoSections, hierarchyPath } from "./sections";
 
 /** Navigation diagram 上的節點種類。 */
-export type DiagramNodeKind = "entry" | "globalNav" | "section" | "page";
+export type DiagramNodeKind = "entry" | "globalNav" | "section" | "implied" | "page";
 
 /** 單一節點：語意（id／種類／標籤／提示／連結）＋座標與尺寸。 */
 export interface DiagramNode {
@@ -74,9 +74,13 @@ const PAGE_ID_PREFIX = "Page_";
 /** 每個 Section 一個方框，id 前綴固定。 */
 const SECTION_ID_PREFIX = "Section_";
 
-/** 全圖每個 Page 都有換頁出口時的提醒（導覽為循環，沒有任何葉頁）。 */
-export const NO_LEAF_PAGE_WARNING =
-  "此圖無終點：每個 Page 都有換頁出口，導覽為循環，沒有任何葉頁。";
+/** 隱含節點（麵包屑有這一段但沒有對應 Page）的 id 前綴。 */
+const IMPLIED_ID_PREFIX = "Implied_";
+
+/** 某 Section 切不出單根的麵包屑樹、已退回分層網格的提醒。 */
+export function fallbackLayoutWarning(name: string): string {
+  return `Section「${name}」切不出 ≥2 層階層，已退回分層網格；若非本意，回頭調整 f2w-capture 的 route／tab 命名。`;
+}
 
 /** 孤立頁（從入口走不到）的提醒；列出 route 讓人回頭補 workflow.json 的操作去向。 */
 export function isolatedPagesWarning(pages: readonly PageId[]): string {
@@ -88,6 +92,7 @@ export function isolatedPagesWarning(pages: readonly PageId[]): string {
 const PAGE_WIDTH = 160;
 const PAGE_HEIGHT = 80;
 const ENTRY_SIZE = 36;
+const IMPLIED_HEIGHT = 40;
 const GLOBAL_NAV_WIDTH = 160;
 const GLOBAL_NAV_HEIGHT = 40;
 const SECTION_WIDTH = 200;
@@ -182,7 +187,46 @@ function sizeOf(kind: DiagramNodeKind): { width: number; height: number } {
   if (kind === "entry") return { width: ENTRY_SIZE, height: ENTRY_SIZE };
   if (kind === "globalNav") return { width: GLOBAL_NAV_WIDTH, height: GLOBAL_NAV_HEIGHT };
   if (kind === "section") return { width: SECTION_WIDTH, height: SECTION_HEIGHT };
+  if (kind === "implied") return { width: PAGE_WIDTH, height: IMPLIED_HEIGHT };
   return { width: PAGE_WIDTH, height: PAGE_HEIGHT };
+}
+
+/** Section 內的麵包屑樹節點；沒有 page 的就是隱含節點（有段無實頁）。 */
+interface TreeNode {
+  segment: string;
+  page?: WorkflowPage;
+  children: TreeNode[];
+}
+
+/**
+ * Section 內每個 Page 在該 Section 那一段上都同名時，才長得成一棵單根樹。
+ * 收成單一 Section 的「切不出階層」情形在這裡會是 false，退回分層網格。
+ */
+function canFormTree(section: Section): boolean {
+  return new Set(section.pages.map((page) => hierarchyPath(page)[section.depth] ?? "")).size === 1;
+}
+
+/** 依相對於 Section 根的階層路徑組樹；路徑中間缺實頁的段成為隱含節點。 */
+function buildTree(section: Section): TreeNode {
+  const root: TreeNode = { segment: section.name, children: [] };
+  for (const page of section.pages) {
+    const relative = hierarchyPath(page).slice(section.depth + 1);
+    let node = root;
+    let parent = root;
+    for (const segment of relative) {
+      let child = node.children.find((candidate) => candidate.segment === segment);
+      if (!child) {
+        child = { segment, children: [] };
+        node.children.push(child);
+      }
+      parent = node;
+      node = child;
+    }
+    // 兩頁的相對路徑撞在一起時掛成兄弟，不覆蓋——一個 Page 都不能掉。
+    if (node.page === undefined) node.page = page;
+    else parent.children.push({ segment: node.segment, page, children: [] });
+  }
+  return root;
 }
 
 /** 一個分頁的組裝器：把「第幾欄第幾列」換算成座標，並發不撞名的邊 id。 */
@@ -314,41 +358,69 @@ export function buildDiagram(workflow: Workflow): NavigationDiagram {
     overview.addEdge(sectionIds.get(from)!, sectionIds.get(to)!, label);
   }
 
-  // ---- 各 Section 分頁：欄＝從入口 BFS 的層級、列＝該層內的原順序 ----
+  // ---- 各 Section 分頁：麵包屑樹，父在左、子在右；列＝深度優先走訪順序 ----
+  const warnings: string[] = [];
+  const usedImpliedIds = new Set<string>();
+  const nodeOfPage = (page: WorkflowPage) => ({
+    id: pageIds.get(pageIdKey(page))!,
+    kind: "page" as const,
+    label: page.purpose,
+    tooltip: stayingTooltip(page),
+  });
+
   const depths = bfsDepths(workflow);
   const isolated = workflow.pages.filter((page) => !depths.has(pageIdKey(page)));
+
   for (const section of sections) {
     const builder = builders.get(section)!;
-    const rowsPerDepth = new Map<number, number>();
-    const cells = new Map<string, { column: number; row: number }>();
-    for (const page of section.pages) {
-      const depth = depths.get(pageIdKey(page));
-      if (depth === undefined) continue;
-      const row = rowsPerDepth.get(depth) ?? 0;
-      rowsPerDepth.set(depth, row + 1);
-      cells.set(pageIdKey(page), { column: depth, row });
+
+    if (!canFormTree(section)) {
+      // 退路：欄＝從入口 BFS 的層級、列＝該層內的原順序（多分頁之前的作法）
+      warnings.push(fallbackLayoutWarning(section.name));
+      const rowsPerDepth = new Map<number, number>();
+      const cells = new Map<string, { column: number; row: number }>();
+      for (const page of section.pages) {
+        const depth = depths.get(pageIdKey(page));
+        if (depth === undefined) continue;
+        const row = rowsPerDepth.get(depth) ?? 0;
+        rowsPerDepth.set(depth, row + 1);
+        cells.set(pageIdKey(page), { column: depth, row });
+      }
+      const mainRows = Math.max(0, ...rowsPerDepth.values());
+      const isolatedFirstRow = mainRows + Math.ceil(BAND_GAP / ROW_SPACING);
+      const sectionIsolated = section.pages.filter((page) => !cells.has(pageIdKey(page)));
+      for (const page of section.pages) {
+        const cell = cells.get(pageIdKey(page));
+        builder.addNode(
+          nodeOfPage(page),
+          cell ? cell.column : 0,
+          cell ? cell.row : isolatedFirstRow + sectionIsolated.indexOf(page),
+        );
+      }
+      continue;
     }
-    const mainRows = Math.max(0, ...rowsPerDepth.values());
-    const isolatedFirstRow = mainRows + Math.ceil(BAND_GAP / ROW_SPACING);
-    const sectionIsolated = section.pages.filter((page) => !cells.has(pageIdKey(page)));
-    for (const page of section.pages) {
-      const cell = cells.get(pageIdKey(page));
-      builder.addNode(
-        {
-          id: pageIds.get(pageIdKey(page))!,
-          kind: "page",
-          label: page.purpose,
-          tooltip: stayingTooltip(page),
-        },
-        cell ? cell.column : 0,
-        cell ? cell.row : isolatedFirstRow + sectionIsolated.indexOf(page),
-      );
-    }
+
+    let row = 0;
+    const visit = (node: TreeNode, column: number): void => {
+      const current = row++;
+      if (node.page) {
+        builder.addNode(nodeOfPage(node.page), column, current);
+      } else {
+        builder.addNode(
+          {
+            id: uniqueId(`${IMPLIED_ID_PREFIX}${toIdSlug(node.segment)}`, usedImpliedIds),
+            kind: "implied",
+            label: node.segment,
+          },
+          column,
+          current,
+        );
+      }
+      for (const child of node.children) visit(child, column + 1);
+    };
+    visit(buildTree(section), 0);
   }
 
-  const warnings: string[] = [];
-  const hasLeafPage = workflow.pages.some((page) => navigatingActions(page).length === 0);
-  if (!hasLeafPage) warnings.push(NO_LEAF_PAGE_WARNING);
   if (isolated.length > 0) warnings.push(isolatedPagesWarning(isolated));
 
   return {
