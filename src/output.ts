@@ -6,6 +6,7 @@ export const CONTRACT_FILES = {
   pages: "pages.json",
   workflow: "workflow.json",
   workbook: "workflow.xlsx",
+  bpmn: "workflow.bpmn",
   workitems: "workitems.json",
   workitemsWorkbook: "workitems.xlsx",
 } as const;
@@ -21,6 +22,7 @@ export const CONTRACT_PRODUCER: Record<ContractName, string> = {
   pages: "f2w-capture",
   workflow: "f2w-describe",
   workbook: "f2w-export",
+  bpmn: "f2w-bpmn",
   workitems: "f2w-breakdown",
   workitemsWorkbook: "f2w-breakdown-export",
 };

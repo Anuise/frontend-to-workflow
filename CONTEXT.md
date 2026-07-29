@@ -36,6 +36,10 @@ _Avoid_: intro, abstract
 最終交付物 `workflow.xlsx`：含「概述」與「逐頁工作流程」兩個 sheet，逐頁列出 Workflow description 並嵌入截圖縮圖。
 _Avoid_: report, spreadsheet, 報表
 
+**Navigation diagram（導覽流程圖）**:
+以 Page 為 BPMN `userTask`、換頁操作為 sequence flow 的 BPMN 2.0 交付圖 `workflow.bpmn`；由 `f2w-bpmn` 從 Workflow description 確定性生成、零推論。畫的是使用者在頁面之間怎麼走，不含業務決策條件、角色泳道與訊息事件。
+_Avoid_: 業務流程圖, flowchart, 流程圖（泛稱）
+
 **Work item（工項）**:
 一筆可分派、可畫押的最小工作單位；錨定在某個 Page，分前端／後端兩層，是 `workitems.xlsx` 每列的單位。
 _Avoid_: task, ticket, 任務（泛稱）
