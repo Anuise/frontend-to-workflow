@@ -9,6 +9,7 @@ const validWorkflow = {
   pages: [
     {
       route: "/",
+      screenshot: "home.png",
       purpose: "首頁，作為整個前端的進入點。",
       content: "顯示歡迎訊息與主要導覽連結。",
       actions: [
@@ -19,6 +20,7 @@ const validWorkflow = {
     {
       route: "/settings",
       tab: "個人資料",
+      screenshot: "settings-profile.png",
       purpose: "編輯個人資料。",
       content: "顯示姓名與 Email 欄位。",
       actions: [{ label: "返回首頁", destination: { route: "/" } }],
@@ -30,8 +32,17 @@ describe("parseWorkflow", () => {
   it("接受合法 workflow（含 Overview、操作去向、可停留原頁的 null 去向）", () => {
     const w = parseWorkflow(validWorkflow);
     expect(w.overview.length).toBeGreaterThan(0);
+    expect(w.pages[0]?.screenshot).toBe("home.png");
     expect(w.pages[0]?.actions[0]?.destination).toEqual({ route: "/settings", tab: "個人資料" });
     expect(w.pages[0]?.actions[1]?.destination).toBeNull();
+  });
+
+  it("仍接受舊版不含 screenshot 的 workflow，供後續步驟 fallback 到 pages.json", () => {
+    const legacy = {
+      ...validWorkflow,
+      pages: validWorkflow.pages.map(({ screenshot: _screenshot, ...page }) => page),
+    };
+    expect(parseWorkflow(legacy).pages[0]?.screenshot).toBeUndefined();
   });
 
   it("拒絕缺 overview、缺 purpose、缺 action label、重複 Page", () => {

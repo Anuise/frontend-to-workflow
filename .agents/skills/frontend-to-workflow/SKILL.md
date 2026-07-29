@@ -29,8 +29,8 @@ description: frontend-to-workflow 管線的總說明。說明六個 step skill�
 
 - **f2w-start**：偵測 Project 如何安裝／啟動／對外 port／base URL，經使用者確認後保存成 **Manifest**（`manifest.yml`），並把 Project 實際跑起來。
 - **f2w-capture**：讀執行中 Project，列舉所有 **Page**（正規化路由；同路由下不同 tab 各成一頁）並逐頁截圖，產出 `pages.json` 與 `screenshots/`。
-- **f2w-describe**：看截圖，以使用者視角為每個 Page 寫一段 **Workflow description**（頁面用途、主要內容、可執行操作、每個操作的操作去向），另寫一段跨頁 **Overview**，產出 `workflow.json`。
-- **f2w-export**：組裝最終 **Workbook** `workflow.xlsx`：含「概述」sheet（放 Overview）與「逐頁工作流程」sheet（每列一個 Page，含 Workflow description 且嵌入該頁截圖縮圖）。（`workflow.json` 不含截圖檔名，故本步需另讀 `pages.json` 取 Page → 截圖對應。）
+- **f2w-describe**：看截圖，以使用者視角為每個 Page 寫一段 **Workflow description**（截圖來源、頁面用途、主要內容、可執行操作、每個操作的操作去向），另寫一段跨頁 **Overview**，產出 `workflow.json`。
+- **f2w-export**：組裝最終 **Workbook** `workflow.xlsx`：含「概述」sheet（放 Overview）與「逐頁工作流程」sheet（每列一個 Page，含 Workflow description 且嵌入該頁截圖縮圖）。新產出的 `workflow.json` 每頁會保留 `screenshot`；本步仍讀 `pages.json` 作為截圖對應的 fallback 與一致性來源。
 - **f2w-breakdown**：讀 `workflow.json`，依每個 Page 的 Workflow description 把工作拆成**前端 Work item**（觀察自畫面）與**後端 Work item**（AI 推論、一律標「推論·待確認」），產出 **Work breakdown** `workitems.json`。承諾型欄位（估時／優先級／RACI／簽核／狀態）刻意不進 json。
 - **f2w-sourcing**（可選插入步，有供應商 API 才跑）：讀 `workitems.json`，對照人提供的 **Vendor spec**（OpenAPI／Swagger，觸發時指定路徑），為每個後端 Work item 定 **Sourcing decision**（vendor-direct 直接呼叫／vendor-adapted 接回自建處理／self-built 自建／needs-investigation 待查），vendor-adapted 拆成「串接＋自建處理」兩筆，產出 **Sourced work breakdown** `workitems-sourced.json`（前端原封複製、後端貼標＋拆項）。配對一律標 `sourcingConfirmed: false`，與後端既有的「推論·待確認」是兩個獨立待確認維度。決策見 ADR-0004。
 - **f2w-breakdown-export**：讀 `workitems-sourced.json`（有就讀）否則退回 `workitems.json`，組裝最終交付**範本** `workitems.xlsx`（「概述」「前端工項」「後端工項」三個 sheet，畫押欄留白、不嵌截圖；讀到 sourced 檔時後端 sheet 多帶來源決策欄）。範本可被重跑覆蓋；人須另存一份**工作副本**填**權責畫押**值（RACI／估時／優先級／簽核／狀態），重跑只覆蓋範本、不動工作副本。

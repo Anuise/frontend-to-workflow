@@ -48,9 +48,17 @@ describe("buildWorkflow", () => {
     expect(w.project).toBe("demo");
     expect(w.overview).toBe(overview);
     expect(w.pages).toHaveLength(2);
-    // route/tab 取自 pages.json（單一真實來源）
-    expect(w.pages[0]).toMatchObject({ route: "/", purpose: "首頁，是整個前端的進入點。" });
-    expect(w.pages[1]).toMatchObject({ route: "/settings", tab: "個人資料" });
+    // route/tab 與 screenshot 取自 pages.json（單一真實來源）
+    expect(w.pages[0]).toMatchObject({
+      route: "/",
+      screenshot: "index.png",
+      purpose: "首頁，是整個前端的進入點。",
+    });
+    expect(w.pages[1]).toMatchObject({
+      route: "/settings",
+      tab: "個人資料",
+      screenshot: "settings-profile.png",
+    });
     // 操作去向：指向真實 Page，或 null（停留原頁）
     expect(w.pages[0]?.actions[0]?.destination).toEqual({ route: "/settings", tab: "個人資料" });
     expect(w.pages[0]?.actions[1]?.destination).toBeNull();
