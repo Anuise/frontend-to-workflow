@@ -14,9 +14,9 @@ import {
   FRONTEND_SHEET,
   INFERRED_STATUS_COLUMN,
   INFERRED_STATUS_LABEL,
+  NEEDS_INVESTIGATION_LABEL,
   OVERVIEW_SHEET,
   RACI_LEGEND,
-  SOURCING_LABELS,
   SOURCING_STATUS_LABEL,
   STATUS_LEGEND,
   buildWorkitemsWorkbook,
@@ -154,14 +154,14 @@ describe("buildWorkitemsWorkbook", () => {
   });
 });
 
-// 同一批工項的 sourced 版：一筆直呼供應商、一筆自建、vendor-adapted 拆出的自建處理層。
+// 同一批工項的 sourced 版：一筆配到供應商端點、一筆派給沒給 spec 的方、一筆待查。
 const sourced: SourcedWorkitems = {
   project: "demo",
   frontend: workitems.frontend,
   backend: [
     {
       ...workitems.backend[0]!,
-      sourcing: "vendor-direct",
+      assignedParty: "sample-vendor",
       vendor: "sample-vendor",
       vendorEndpoints: ["POST /api/v1/profile", "GET /api/v1/profile"],
       sourcingConfirmed: false,
@@ -170,7 +170,7 @@ const sourced: SourcedWorkitems = {
       ...workitems.backend[0]!,
       id: "BE-2",
       title: "驗證規則",
-      sourcing: "self-built",
+      assignedParty: "mobagel",
       vendorEndpoints: [],
       sourcingConfirmed: false,
     },
@@ -178,18 +178,16 @@ const sourced: SourcedWorkitems = {
       ...workitems.backend[0]!,
       id: "BE-3-P",
       title: "個人資料遮罩層",
-      sourcing: "vendor-adapted",
-      vendor: "sample-vendor",
+      assignedParty: "needs-investigation",
       vendorEndpoints: [],
       sourcingConfirmed: false,
-      adaptationRole: "process",
       originItemId: "BE-3",
     },
   ],
 };
 
 describe("buildWorkitemsWorkbook（讀到 sourced 檔）", () => {
-  it("後端 sheet 在推論狀態後加來源決策欄（AC：sourced 後端欄位）", () => {
+  it("後端 sheet 在推論狀態後加分工歸屬欄（AC：sourced 後端欄位）", () => {
     const ws = buildWorkitemsWorkbook(sourced).getWorksheet(BACKEND_SHEET)!;
     const header = (ws.getRow(1).values as unknown[]).slice(1).map(String);
     expect(header).toEqual([...BACKEND_SOURCED_COLUMNS]);
@@ -199,24 +197,23 @@ describe("buildWorkitemsWorkbook（讀到 sourced 檔）", () => {
     expect(ws.rowCount).toBe(sourced.backend.length + 1);
   });
 
-  it("每列填來源決策事實，來源狀態一律配對·待確認（AC：來源狀態）", () => {
+  it("每列填分工歸屬事實，來源狀態一律配對·待確認（AC：來源狀態）", () => {
     const ws = buildWorkitemsWorkbook(sourced).getWorksheet(BACKEND_SHEET)!;
     const header = (ws.getRow(1).values as unknown[]).slice(1).map(String);
     const cell = (r: number, col: string) =>
       String(ws.getRow(r).getCell(header.indexOf(col) + 1).value ?? "");
 
-    // vendor-direct：來源／供應商／端點皆填，串接角色空
-    expect(cell(2, "來源")).toBe(SOURCING_LABELS["vendor-direct"]);
+    // 配到某份 spec 的端點：派工方／供應商／端點皆填
+    expect(cell(2, "派工方")).toBe("sample-vendor");
     expect(cell(2, "供應商")).toBe("sample-vendor");
     expect(cell(2, "供應商端點")).toContain("POST /api/v1/profile");
-    expect(cell(2, "串接角色")).toBe("");
-    // self-built：不攀附供應商，供應商與端點留空
-    expect(cell(3, "來源")).toBe(SOURCING_LABELS["self-built"]);
+    // 派給沒給 spec 的方：供應商與端點留空（vendor 與派工脫鉤）
+    expect(cell(3, "派工方")).toBe("mobagel");
     expect(cell(3, "供應商")).toBe("");
     expect(cell(3, "供應商端點")).toBe("");
-    // vendor-adapted 的自建處理層：有串接角色、無端點
-    expect(cell(4, "來源")).toBe(SOURCING_LABELS["vendor-adapted"]);
-    expect(cell(4, "串接角色")).toBe("自建處理");
+    // needs-investigation：顯示「待查」、不得攀附供應商
+    expect(cell(4, "派工方")).toBe(NEEDS_INVESTIGATION_LABEL);
+    expect(cell(4, "供應商")).toBe("");
     expect(cell(4, "供應商端點")).toBe("");
     // 三列的推論狀態與來源狀態並存（兩個獨立的待確認維度）
     for (let r = 2; r <= ws.rowCount; r++) {
@@ -225,13 +222,15 @@ describe("buildWorkitemsWorkbook（讀到 sourced 檔）", () => {
     }
   });
 
-  it("前端 sheet 不受影響、概述補來源圖例（AC：sourced 概述）", () => {
+  it("前端 sheet 不受影響、概述補分工圖例（AC：sourced 概述）", () => {
     const wb = buildWorkitemsWorkbook(sourced);
     const feHeader = (wb.getWorksheet(FRONTEND_SHEET)!.getRow(1).values as unknown[]).slice(1);
     expect(feHeader.map(String)).toEqual([...FRONTEND_COLUMNS]);
     const blob = cellTexts(wb.getWorksheet(OVERVIEW_SHEET)!).join("\n");
     expect(blob).toContain(SOURCING_STATUS_LABEL);
-    expect(blob).toContain(SOURCING_LABELS["needs-investigation"]);
+    // 分工圖例列出本批出現的派工方（含待查）
+    expect(blob).toContain("mobagel");
+    expect(blob).toContain(NEEDS_INVESTIGATION_LABEL);
   });
 });
 

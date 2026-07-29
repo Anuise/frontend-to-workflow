@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { MissingPrerequisiteError } from "../prerequisites";
 import { isSourcedWorkitems, loadWorkitemsForExport } from "./inputs";
 
-// 合成的 workitems-sourced.json：一筆前端、一筆帶來源決策的後端。
+// 合成的 workitems-sourced.json：一筆前端、一筆帶分工歸屬的後端。
 const SOURCED = {
   project: "demo",
   frontend: [
@@ -30,7 +30,7 @@ const SOURCED = {
       dependsOn: ["FE-1"],
       risk: "",
       inferred: true,
-      sourcing: "vendor-direct",
+      assignedParty: "sample-vendor",
       vendor: "sample-vendor",
       vendorEndpoints: ["POST /api/v1/login"],
       sourcingConfirmed: false,
@@ -61,7 +61,7 @@ describe("loadWorkitemsForExport", () => {
     const loaded = loadWorkitemsForExport(root, "demo");
     expect(isSourcedWorkitems(loaded)).toBe(true);
     expect(loaded.backend[0]).toMatchObject({
-      sourcing: "vendor-direct",
+      assignedParty: "sample-vendor",
       vendor: "sample-vendor",
       sourcingConfirmed: false,
     });

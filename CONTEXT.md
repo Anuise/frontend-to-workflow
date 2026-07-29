@@ -37,8 +37,24 @@ _Avoid_: intro, abstract
 _Avoid_: report, spreadsheet, 報表
 
 **Navigation diagram（導覽流程圖）**:
-以 Page 為節點、換頁操作為有向邊的導覽交付圖 `workflow.drawio`；由 `f2w-diagram` 從 Workflow description 確定性生成、零推論。畫的是使用者在頁面之間怎麼走，不含業務決策條件、角色泳道與訊息事件。
+以 Page 為節點、換頁操作為有向邊的導覽交付圖 `workflow.drawio`；由 `f2w-diagram` 從 Workflow description 確定性生成、零推論。畫的是使用者在頁面之間怎麼走，不含業務決策條件、角色泳道與訊息事件。檔內含多個 draw.io 分頁：第 1 頁總覽，之後每個 Section 一頁。
 _Avoid_: 業務流程圖, BPMN 圖, flowchart, 流程圖（泛稱）
+
+**Section（區段）**:
+Navigation diagram 的分頁單位：一群 Page ＋ 它們的麵包屑樹。由階層路徑（`route` 的 path 段 ＋ `tab` 以全形直線切開的段）中第一個具區辨力的段切出。**使用者口語的「一條完整的路線」即指 Section。**
+_Avoid_: Route（專指 `pages[].route` 的 URL 路徑）, Flow（撞 workflow）, 模組（產品功能區的泛稱）
+
+**Global nav marker（全域導覽記號）**:
+總覽頁上代表「側欄可從任一頁跳到各 Section 首頁」的單一節點。跨 Section 且目的地為該 Section 首頁的邊全部收成它發出的邊——驗證資料 73 條收成 8 條。與 Entry marker（入口記號）同一類的合成節點。
+_Avoid_: 側邊欄節點, menu, 導覽列
+
+**Implied node（隱含節點）**:
+麵包屑階層有這一段、但 `workflow.json` 裡沒有對應 Page 而生出的框（例如只有 tab 子頁的 `模型服務詳情`）。由階層路徑確定性推得、不讀 label 語意，因此仍屬零推論——與 Inferred work item 的「推論·待確認」是無關的兩件事。
+_Avoid_: 虛擬節點, 假節點, 推論節點
+
+**Tab group（tab 群組）**:
+圈住同父 tab 子頁的框，標題固定為「可互相切換的 tab」。只有該組兄弟之間實際存在互跳邊時才生框，平行子頁不生框。取代兄弟↔兄弟的互跳邊——驗證資料 46 條收成 0。
+_Avoid_: 泳道, swimlane, 容器
 
 **Work item（工項）**:
 一筆可分派、可畫押的最小工作單位；錨定在某個 Page，分前端／後端兩層，是 `workitems.xlsx` 每列的單位。
@@ -60,28 +76,36 @@ _Avoid_: 分工, 指派, assignment（泛稱）
 `workitems.xlsx` 是畫押欄留白的**範本**、可被重跑覆蓋；人須另存一份**工作副本**填畫押值，重跑只覆蓋範本、不動工作副本。
 _Avoid_: 空白表／填好的表（泛稱）
 
-## 供應商來源（Sourcing）
+## 分工歸屬（Sourcing）
+
+**權責泳道圖（Responsibility swimlane diagram）**:
+人畫的 draw.io 泳道圖：泳道＝分工方（Party）、格＝該方負責的元件、邊＝呼叫／資料流。**平台級共用文件、可跨 project**，是 `f2w-sourcing` 派工的主要依據；AI 直接讀圖推斷（不經確定性解析器），錯配靠人核兜底。
+_Avoid_: Navigation diagram（那是 f2w-diagram 的零推論產物，明文不含泳道）, 流程圖（泛稱）, BPMN 圖
+
+**Party（分工方）**:
+權責泳道圖中一條泳道代表的責任單位；自家與外部廠商一視同仁。分工方名集合 = 泳道名 ∪ Vendor spec 檔名。
+_Avoid_: vendor（保留給「有提供 Vendor spec 的分工方」）, 廠商（泛稱）, 團隊
 
 **Vendor（供應商）**:
-提供可直接接用之後端能力的外部第三方；以其 Vendor spec 檔名（去副檔名）為識別名。
+有提供 Vendor spec（OpenAPI）的分工方；以其 spec 檔名（去副檔名）為識別名。
 _Avoid_: 廠商, supplier, third-party（泛稱）
 
 **Vendor spec（供應商規格）**:
-單一 Vendor 的 OpenAPI／Swagger 契約檔；由人放在 Workspace 的 Project 內，觸發 `f2w-sourcing` 時強制指定路徑（可多個，一檔一家）。
+單一 Vendor 的 OpenAPI／Swagger 契約檔；由人提供、觸發 `f2w-sourcing` 時指定路徑（可選，0..n 份、一檔一家；與權責泳道圖至少給一種）。是派工的輔助證據。
 _Avoid_: API doc, 文件（泛稱）
 
 **Vendor capability（供應商能力）**:
-從 Vendor spec **確定性解析**出的單一可呼叫端點（endpoint ＋ 參數 ＋ 回應 schema）；是 Sourcing decision 配對的對象。機器解析而來，非 AI 抽取。
+從 Vendor spec **確定性解析**出的單一可呼叫端點（endpoint ＋ 參數 ＋ 回應 schema）；是 `vendorEndpoints` 配對的對象。機器解析而來，非 AI 抽取。
 _Avoid_: endpoint（單指 URL 路徑時可用）, feature
 
-**Sourcing decision（來源決策）**:
-為單一後端 Work item 定的來源歸屬，四選一：**vendor-direct**（直接呼叫供應商 API）／**vendor-adapted**（接回供應商資料、自建處理後再用）／**self-built**（自建）／**needs-investigation**（規格不明、無法判定）。由 `f2w-sourcing` 產出。
-_Avoid_: routing, 分派（泛稱）
+**Party assignment（分工歸屬）**:
+為單一後端 Work item 派定「誰做」：一個分工方名，或 **needs-investigation**（從圖與 spec 都判不出誰做、待查）。一筆工項橫跨兩方時拆成多筆**跨方接力**（`dependsOn` 串、`originItemId` 溯源）。由 `f2w-sourcing` 產出。
+_Avoid_: Sourcing decision／來源決策（四桶舊語）, vendor-direct, vendor-adapted, self-built（已廢值）, 分派（泛稱）
 
 **配對·待確認（Sourcing confirmation）**:
-Sourcing decision 由 AI 語意配對而來，一律標 `sourcingConfirmed: false`；與 Inferred work item 的「推論·待確認」是**兩個獨立維度**——一個問工項存不存在、一個問這條 API 配得對不對，開工前各自要人核。
+Party assignment 由 AI 語意配對而來，一律標 `sourcingConfirmed: false`；與 Inferred work item 的「推論·待確認」是**兩個獨立維度**——一個問工項存不存在、一個問派的方與配的 API 對不對，開工前各自要人核。
 _Avoid_: 待驗證（泛稱）
 
 **Sourced work breakdown（來源劃分）**:
-`f2w-sourcing` 產出的 `workitems-sourced.json`：把 Work breakdown 的後端工項貼上 Sourcing decision、並把 vendor-adapted 拆成「串接（fetch）＋自建處理（process）」兩筆後的**完整副本**（前端原封複製）。是可選插入步的產物，`f2w-breakdown-export` 有它就讀它。
+`f2w-sourcing` 產出的 `workitems-sourced.json`：把 Work breakdown 的後端工項貼上 Party assignment、並把跨方接力的工項拆成多筆後的**完整副本**（前端原封複製）。是可選插入步的產物，`f2w-breakdown-export` 有它就讀它。
 _Avoid_: 加工工項清單（泛稱）

@@ -7,7 +7,7 @@ import { ContractValidationError } from "../contracts/validate";
 import { type Workitems, parseWorkitems } from "../contracts/workitems";
 import { contractPath } from "../output";
 import {
-  type SourcingDecision,
+  type PartyAssignment,
   SourcingConsistencyError,
   buildSourcedWorkitems,
   saveSourcedWorkitems,
@@ -62,6 +62,9 @@ const workitems: Workitems = parseWorkitems({
   ],
 });
 
+/** 權責泳道圖的泳道名（AI 讀圖抽出後傳入）。 */
+const parties = ["mobagel", "gary", "leadtek"];
+
 const capabilities: VendorCapability[] = [
   {
     vendor: "Gateway-API",
@@ -83,37 +86,41 @@ const capabilities: VendorCapability[] = [
   },
 ];
 
-const decisions: SourcingDecision[] = [
+const assignments: PartyAssignment[] = [
   {
     itemId: "BE-1",
-    sourcing: "vendor-direct",
+    assignedParty: "gary",
     vendor: "Gateway-API",
     vendorEndpoints: ["GET /models"],
   },
   {
+    // 跨方接力：gary 出用量端點、mobagel 接回彙總
     itemId: "BE-2",
-    sourcing: "vendor-adapted",
-    vendor: "Gateway-API",
-    vendorEndpoints: ["GET /usage"],
-    fetch: {
-      id: "BE-2-fetch",
-      title: "串接用量端點",
-      scope: "呼叫 GET /usage 取回原始用量。",
-      acceptance: "取得完整分頁資料。",
-    },
-    process: {
-      id: "BE-2-process",
-      title: "用量彙總處理層",
-      scope: "把原始用量彙總成平台口徑。",
-      acceptance: "彙總數字與原始資料可對帳。",
-    },
+    parts: [
+      {
+        id: "BE-2-fetch",
+        title: "串接用量端點",
+        scope: "呼叫 GET /usage 取回原始用量。",
+        acceptance: "取得完整分頁資料。",
+        assignedParty: "gary",
+        vendor: "Gateway-API",
+        vendorEndpoints: ["GET /usage"],
+      },
+      {
+        id: "BE-2-process",
+        title: "用量彙總處理層",
+        scope: "把原始用量彙總成平台口徑。",
+        acceptance: "彙總數字與原始資料可對帳。",
+        assignedParty: "mobagel",
+      },
+    ],
   },
-  { itemId: "BE-3", sourcing: "self-built" },
+  { itemId: "BE-3", assignedParty: "mobagel" },
 ];
 
 describe("buildSourcedWorkitems", () => {
-  it("逐桶貼標、vendor-adapted 拆兩筆，並把指向被拆 id 的依賴改指 process 筆", () => {
-    const sourced = buildSourcedWorkitems(workitems, capabilities, decisions);
+  it("逐筆派方、跨方接力拆項，並把指向被拆 id 的依賴改指接力最後一筆", () => {
+    const sourced = buildSourcedWorkitems(workitems, parties, capabilities, assignments);
 
     expect(sourced.backend.map((i) => i.id)).toEqual([
       "BE-1",
@@ -124,68 +131,134 @@ describe("buildSourcedWorkitems", () => {
     const direct = sourced.backend[0]!;
     const fetch = sourced.backend[1]!;
     const process = sourced.backend[2]!;
-    const selfBuilt = sourced.backend[3]!;
+    const audit = sourced.backend[3]!;
 
-    expect(direct.sourcing).toBe("vendor-direct");
+    expect(direct.assignedParty).toBe("gary");
+    expect(direct.vendor).toBe("Gateway-API");
     expect(direct.vendorEndpoints).toEqual(["GET /models"]);
-    expect(direct.adaptationRole).toBeUndefined();
 
-    // 拆項：fetch 承接原依賴並掛端點，process 只依賴 fetch 且不列端點
-    expect(fetch.adaptationRole).toBe("fetch");
+    // 拆項：首筆承接原依賴並掛端點，後筆接力依賴前一筆、不掛端點
+    expect(fetch.assignedParty).toBe("gary");
     expect(fetch.dependsOn).toEqual(["BE-1"]);
     expect(fetch.vendorEndpoints).toEqual(["GET /usage"]);
     expect(fetch.risk).toBe("彙總口徑易與供應商不同。");
-    expect(process.adaptationRole).toBe("process");
+    expect(process.assignedParty).toBe("mobagel");
     expect(process.dependsOn).toEqual(["BE-2-fetch"]);
     expect(process.vendorEndpoints).toEqual([]);
     expect([fetch.originItemId, process.originItemId]).toEqual(["BE-2", "BE-2"]);
 
-    // 原 BE-2 已不存在，BE-3 的依賴改指完整能力那一筆
-    expect(selfBuilt.sourcing).toBe("self-built");
-    expect(selfBuilt.dependsOn).toEqual(["BE-2-process"]);
-    expect(selfBuilt.vendor).toBeUndefined();
+    // 原 BE-2 已不存在，BE-3 的依賴改指接力最後一筆
+    expect(audit.assignedParty).toBe("mobagel");
+    expect(audit.dependsOn).toEqual(["BE-2-process"]);
+    expect(audit.vendor).toBeUndefined();
 
     // 一律待人核；前端原封複製
     expect(sourced.backend.every((i) => i.sourcingConfirmed === false)).toBe(true);
     expect(sourced.frontend).toEqual(workitems.frontend);
   });
 
-  it("漏給、多給或重複給決策都丟 SourcingConsistencyError", () => {
-    expect(() => buildSourcedWorkitems(workitems, capabilities, decisions.slice(0, 2))).toThrow(
-      /缺來源決策/,
+  it("只給泳道方名、不給任何 Vendor spec 也能派工", () => {
+    const noSpec: PartyAssignment[] = [
+      { itemId: "BE-1", assignedParty: "gary" },
+      { itemId: "BE-2", assignedParty: "leadtek" },
+      { itemId: "BE-3", assignedParty: "needs-investigation" },
+    ];
+    const sourced = buildSourcedWorkitems(workitems, parties, [], noSpec);
+    expect(sourced.backend.map((i) => i.assignedParty)).toEqual([
+      "gary",
+      "leadtek",
+      "needs-investigation",
+    ]);
+    expect(sourced.backend.every((i) => i.vendorEndpoints.length === 0)).toBe(true);
+  });
+
+  it("泳道名與 spec 皆缺（分工方集合為空）即丟 SourcingConsistencyError", () => {
+    expect(() => buildSourcedWorkitems(workitems, [], [], assignments)).toThrow(
+      /分工方集合為空/,
     );
+  });
+
+  it("漏給、多給或重複給歸屬都丟 SourcingConsistencyError", () => {
     expect(() =>
-      buildSourcedWorkitems(workitems, capabilities, [
-        ...decisions,
-        { itemId: "BE-9", sourcing: "self-built" },
+      buildSourcedWorkitems(workitems, parties, capabilities, assignments.slice(0, 2)),
+    ).toThrow(/缺分工歸屬/);
+    expect(() =>
+      buildSourcedWorkitems(workitems, parties, capabilities, [
+        ...assignments,
+        { itemId: "BE-9", assignedParty: "mobagel" },
       ]),
     ).toThrow(SourcingConsistencyError);
     expect(() =>
-      buildSourcedWorkitems(workitems, capabilities, [...decisions, decisions[2]!]),
-    ).toThrow(/多筆決策/);
+      buildSourcedWorkitems(workitems, parties, capabilities, [...assignments, assignments[2]!]),
+    ).toThrow(/多筆歸屬/);
+  });
+
+  it("assignedParty 不在分工方集合內即丟 SourcingConsistencyError", () => {
+    const stranger = assignments.map((a) =>
+      a.itemId === "BE-3" ? { ...a, assignedParty: "Nobody" } : a,
+    );
+    expect(() => buildSourcedWorkitems(workitems, parties, capabilities, stranger)).toThrow(
+      /不在分工方集合內/,
+    );
   });
 
   it("端點或 vendor 不在 spec 內即丟 SourcingConsistencyError", () => {
-    const badEndpoint = decisions.map((d) =>
-      d.itemId === "BE-1" ? { ...d, vendorEndpoints: ["DELETE /models"] } : d,
+    const badEndpoint = assignments.map((a) =>
+      a.itemId === "BE-1" ? { ...a, vendorEndpoints: ["DELETE /models"] } : a,
     );
-    expect(() => buildSourcedWorkitems(workitems, capabilities, badEndpoint)).toThrow(
+    expect(() => buildSourcedWorkitems(workitems, parties, capabilities, badEndpoint)).toThrow(
       /不存在於 Gateway-API 的 spec/,
     );
 
-    const badVendor = decisions.map((d) => (d.itemId === "BE-1" ? { ...d, vendor: "Nope" } : d));
-    expect(() => buildSourcedWorkitems(workitems, capabilities, badVendor)).toThrow(
+    const badVendor = assignments.map((a) =>
+      a.itemId === "BE-1" ? { ...a, vendor: "Nope", vendorEndpoints: ["GET /x"] } : a,
+    );
+    expect(() => buildSourcedWorkitems(workitems, parties, capabilities, badVendor)).toThrow(
       /不在已解析的 Vendor spec 內/,
     );
   });
 
-  it("自建攀附供應商、或 vendor-adapted 沒給兩筆拆項都擋下", () => {
-    const clingy = decisions.map((d) => (d.itemId === "BE-3" ? { ...d, vendor: "Gateway-API" } : d));
-    expect(() => buildSourcedWorkitems(workitems, capabilities, clingy)).toThrow(/不得帶 vendor/);
+  it("needs-investigation 攀附供應商、或 vendor 與端點不成對都擋下", () => {
+    const clingy = assignments.map((a) =>
+      a.itemId === "BE-3"
+        ? {
+            ...a,
+            assignedParty: "needs-investigation",
+            vendor: "Gateway-API",
+            vendorEndpoints: ["GET /models"],
+          }
+        : a,
+    );
+    expect(() => buildSourcedWorkitems(workitems, parties, capabilities, clingy)).toThrow(
+      /不得帶 vendor/,
+    );
 
-    const halfSplit = decisions.map((d) => (d.itemId === "BE-2" ? { ...d, process: undefined } : d));
-    expect(() => buildSourcedWorkitems(workitems, capabilities, halfSplit)).toThrow(
-      /必須同時給 fetch 與 process/,
+    const unpaired = assignments.map((a) =>
+      a.itemId === "BE-3" ? { ...a, vendor: "Gateway-API" } : a,
+    );
+    expect(() => buildSourcedWorkitems(workitems, parties, capabilities, unpaired)).toThrow(
+      /必須成對/,
+    );
+  });
+
+  it("拆項不足兩筆、頂層並填歸屬、或兩種形式皆缺都擋下", () => {
+    const half = assignments.map((a) =>
+      a.itemId === "BE-2" ? { ...a, parts: a.parts!.slice(0, 1) } : a,
+    );
+    expect(() => buildSourcedWorkitems(workitems, parties, capabilities, half)).toThrow(
+      /至少拆兩筆/,
+    );
+
+    const both = assignments.map((a) =>
+      a.itemId === "BE-2" ? { ...a, assignedParty: "gary" } : a,
+    );
+    expect(() => buildSourcedWorkitems(workitems, parties, capabilities, both)).toThrow(
+      /頂層不得再帶/,
+    );
+
+    const neither = assignments.map((a) => (a.itemId === "BE-3" ? { itemId: "BE-3" } : a));
+    expect(() => buildSourcedWorkitems(workitems, parties, capabilities, neither)).toThrow(
+      /必須給 assignedParty 或 parts/,
     );
   });
 });
@@ -193,7 +266,7 @@ describe("buildSourcedWorkitems", () => {
 describe("saveSourcedWorkitems", () => {
   it("驗證通過才寫檔，且讀回與寫入相同", () => {
     const root = mkdtempSync(join(tmpdir(), "f2w-sourcing-out-"));
-    const sourced = buildSourcedWorkitems(workitems, capabilities, decisions);
+    const sourced = buildSourcedWorkitems(workitems, parties, capabilities, assignments);
 
     const path = saveSourcedWorkitems(root, "demo", sourced);
     expect(path).toBe(contractPath(root, "demo", "workitemsSourced"));
@@ -204,7 +277,7 @@ describe("saveSourcedWorkitems", () => {
 
   it("sourcingConfirmed 不是 false 就冒泡 ContractValidationError 且不落地", () => {
     const root = mkdtempSync(join(tmpdir(), "f2w-sourcing-out-"));
-    const sourced = buildSourcedWorkitems(workitems, capabilities, decisions);
+    const sourced = buildSourcedWorkitems(workitems, parties, capabilities, assignments);
     const tampered = {
       ...sourced,
       backend: sourced.backend.map((i) => ({ ...i, sourcingConfirmed: true })),
