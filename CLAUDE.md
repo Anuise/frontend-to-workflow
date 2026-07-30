@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Issues and PRDs are tracked in this repo's GitHub Issues (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+Issues and specs are tracked as local markdown files under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
