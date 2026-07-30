@@ -149,4 +149,7 @@ vite.config.ts.timestamp-*
 /output/*
 !/output/README.md
 
+# Playwright MCP 的操作紀錄（console log 與 page 快照，帶時間戳、每次瀏覽器操作都生）
+.playwright-mcp/
+
 /frontend/
