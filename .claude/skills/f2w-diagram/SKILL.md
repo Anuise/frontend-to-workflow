@@ -1,78 +1,90 @@
 ---
 name: f2w-diagram
-description: frontend-to-workflow 管線中與 f2w-export 並列的分支步。讀取 workflow.json，依階層路徑把 Page 切成 Section，產出多分頁的 Navigation diagram workflow.drawio——第 1 頁總覽、之後每個 Section 一頁，內部依麵包屑樹展開。側欄邊收成全域導覽記號、同父 tab 互跳收成 tab 群組框、返回操作降進 tooltip，圖上只留推進邊。缺前置檔時提示先跑 f2w-describe。Use when the user wants to run f2w-diagram, produce a draw.io diagram of a project's page navigation, or generate workflow.drawio for the frontend-to-workflow pipeline.
+description: frontend-to-workflow 管線中與 f2w-export 並列的分支步，也是唯一畫圖的推論步。讀取 workflow.json，以 Overview ＋ 每頁 purpose 推論出各條主線並落成交接檔 mainflow.json（可手改；已存在就沿用、不重推論），再由純函式產出多分頁的 Main flow diagram mainflow.drawio——一條主線一張大分頁、沒有總覽頁，頁內單列橫排 2–7 個編號步驟、只留主幹（彈窗與明細頁不畫），一步可收攏多個 Page（收攏的頁只進 tooltip）。讀者是業主，圖上乾淨：不標「推論·待確認」、不標 ⚠。缺前置檔時提示先跑 f2w-describe。Use when the user wants to run f2w-diagram, infer a project's main business flows, or produce mainflow.json and the Main flow diagram mainflow.drawio for the frontend-to-workflow pipeline.
 ---
 
-# f2w-diagram：導覽流程圖（Navigation diagram）
+# f2w-diagram：主線流程圖（Main flow diagram）
 
-與 `f2w-export` **並列的分支步**（不是插入步、不佔步驟編號）：兩者都只讀 `f2w-describe` 產出的 `output/<project>/workflow.json`、互不依賴、可各自單獨重跑。本步把頁面與「操作去向」確定性地轉成一份 **Navigation diagram**——draw.io 檔 `output/<project>/workflow.drawio`（明文 mxGraphModel、含座標、多分頁），draw.io 開起來即有版面。
+與 `f2w-export` **並列的分支步**（不是插入步、不佔步驟編號）：兩者都只讀 `f2w-describe` 產出的 `output/<project>/workflow.json`、互不依賴、可各自單獨重跑。本步把整個專案收斂成幾條 **Main flow（主線）**，畫成一份 **Main flow diagram**——draw.io 檔 `output/<project>/mainflow.drawio`（明文 mxGraphModel、含座標、多分頁），draw.io 開起來即有版面。
 
 前置：`output/<project>/workflow.json`（由 f2w-describe 產出）。缺件即中止並提示先跑 f2w-describe。
-產出：`output/<project>/workflow.drawio`。
-**零推論**：本步全部由 `workflow.json` 確定性生成，不引入任何新的「待確認」維度（對比 ADR-0002 的推論工項、ADR-0004 的配對待確認）。畫錯就是上游描述錯。
+產出：`output/<project>/mainflow.json`（推論交接檔、可手改）與 `output/<project>/mainflow.drawio`（交付物）。
 
-## 這張圖畫的是導覽，不是業務流程
+決策與理由見 `docs/adr/0006-navigation-diagram-as-drawio.md`（draw.io 明文不壓縮、邊座標交給 draw.io、tooltip 承載圖上收掉的資訊——這三條仍有效）與 `docs/adr/0008-main-flow-diagram-ai-inferred.md`（本設計：改成主線流程圖、推論落在 mainflow.json）。`docs/adr/0005-navigation-diagram-as-bpmn.md` 是歷史（它的「畫的是導覽不是業務流程」與「零推論」兩條底線已被取代）；`docs/adr/0007-navigation-diagram-one-section-per-page.md` 整份已被取代（Section 分頁、麵包屑樹、收邊三規則、分層網格 fallback、孤立頁 warning 全部退場）。
 
-節點是 **Page**、邊是**換頁操作**。它**不含**業務決策條件、角色泳道、訊息事件——那些資訊 `workflow.json` 裡沒有，要憑空生只能靠 AI 推論。決策與理由見 `docs/adr/0005-navigation-diagram-as-bpmn.md`（導覽圖主體）、`0006-navigation-diagram-as-drawio.md`（改出 draw.io、砍分歧與終點節點）與 `0007-navigation-diagram-one-section-per-page.md`（改成多分頁、一個 Section 一條路線）。
+## 這一步是推論步
 
-## 一個 Section 一條完整的路線
+本步**會推論**：`workflow.json` 裡沒有「哪幾條主線、每條分幾步」這件事，那是業務層級的歸納。推論素材只有兩樣——`overview`（跨頁概述，通常已自報這個系統有哪幾條主線）與每頁的 `purpose`。
 
-**階層路徑**＝`route` 的 path 段（去掉空段與 `index`）接上 `tab` 以全形直線切開的段。**Section** 由其中第一個**具區辨力**的段決定；這一層只要符合下列任一條就整體往下一層再試：
+推論結果**一律先落成 `mainflow.json`**，再由純函式照它畫圖（前例＝`f2w-sourcing` 吃外部事實產出新契約檔）。`src/diagram/` 這一側維持純函式、可斷言：不讀語意、不猜順序，只做版面與一致性硬驗。
 
-- 只切出一個桶（大家第一段都一樣）；
-- **兩個桶共用子段名**——這一層切的是橫切所有模組的模式前綴（例如 `SSO` 與 `一般登入` 底下都有 `算力申請與審核`）；
-- 只有一個桶裝得下 2 頁以上（其餘都是單頁，那個桶就是全部）。
+推論的痕跡**不上圖面**：不標「推論·待確認」、不標 ⚠。這張圖是給**業主**看的，要乾淨好懂；要查 AI 判斷了什麼就看 `mainflow.json`。（與 ADR-0002 的推論工項、ADR-0004 的配對待確認是不同維度，那兩者不變。）
 
-每個 Section 成為 draw.io 的一個分頁。**版面由階層決定、與邊無關**——上游漏掉幾條操作去向時版面不會垮。
+## 這張圖只畫主幹
+
+一條主線一張大分頁、**沒有總覽頁**（第 1 頁就是第一條主線）。頁內是**單列橫排、不折行**的主鏈，2–7 步，**只留主幹**——彈窗與明細頁不畫。**一步可收攏多個 Page**（例如服務維護的五個 tab 收成「維運模型服務」一步），收攏的頁只進 tooltip、不上圖面。
+
+業主向的字數上限寫進契約由 zod 擋下，不靠提示詞自律：節點標題 `title` ≤ **12** 字（`STEP_TITLE_MAX`）、節點小字 `note` ≤ **30** 字（`STEP_NOTE_MAX`）、邊 label `edgeLabel` ≤ **8** 字（`EDGE_LABEL_MAX`）、一條主線 **2–7** 步（`STEPS_MIN`／`STEPS_MAX`）。
 
 ## 語意映射
 
-| workflow.json | draw.io |
+| mainflow.json | draw.io（mainflow.drawio） |
 |---|---|
-| 每個 `pages[n]` | 一個 vertex，落在自己 Section 的分頁上：`id` 由正規化 route(+tab) 衍生（`Page_<slug>`，撞名補 `_2`）；兩段式標籤＝**粗體階層路徑末段** ＋ 小字 `purpose` |
-| 每個 Section | 總覽頁一個方框（標「Section 名（n 頁）」、掛 draw.io 分頁連結）＋ 一個分頁 |
-| `pages[0]` | 總覽頁的**入口記號**（小綠圓，`Entry_1`）接到它所屬的 Section 方框 |
-| 跨 Section 且目的地為該 Section **首頁** | 側欄導覽：收成單一**全域導覽記號**（`GlobalNav_1`）發出的一條邊，原 label 不上圖 |
-| 跨 Section 且目的地**非**首頁 | 真實轉場：畫在總覽頁的 Section 方框之間，label 原文照印，繞到那一列底下走 |
-| 同 Section，父 → 子 或其他 | 推進邊，畫在該 Section 分頁上，label 原文照印、不截斷 |
-| 同 Section，兄弟 ↔ 兄弟 | **不畫邊**：改用 **tab 群組**框圈住（標題「可互相切換的 tab」）。該組兄弟之間真的有互跳才生框 |
-| 同 Section，子 → 祖先 | **不畫邊**：label 併入來源節點 tooltip 的「返回操作」段 |
-| `actions[].destination` 為 null | 寫進該節點 tooltip 的「不換頁的操作」段 |
-| 麵包屑有段、無對應 Page | **隱含節點**（`Implied_<slug>`），當子節點的父框 |
-| 從入口 BFS 走不到的 Page | 照樣排在自己 Section 的樹裡，標題加 `⚠` 前綴 |
+| 每個 `flows[n]` | 一個分頁（`Diagram_<n>`，分頁名＝主線 `name`）：頂端 24px 粗體主線標題（`Title_<n>`）＋ 正下方同色系細橫線（`Rule_<n>`）。整頁色系依 `flows` 順序取固定 6 色色表、超過循環 |
+| 每個 `steps[n]` | 單列橫排的一個步驟框（`Step_<flow>_<step>`，240×100、圓角淡底深框）：兩段式＝**粗體「編號. `title`」** ＋ 小字 `note` |
+| `steps[].pages` | 該步驟框的 draw.io tooltip，抬頭「此步驟涵蓋的頁面：」逐頁列 route（含 tab）；**不上圖面** |
+| `steps[].edgeLabel` | 往下一步的推進邊（`Edge_<flow>_<step>`）的 label——AI 寫的**業務轉場動作**，不逐字引用 action label。最後一步不得有 |
+| `excludedPages` | **圖上完全不提**；只留在 mainflow.json（各帶一句 `reason`）與本步回報的 warning |
 
 ## 流程
 
 1. **讀取前置** — `loadWorkflowForDiagram(outputRoot, project)`
    - 缺 `workflow.json` 丟 `MissingPrerequisiteError`，提示先跑 f2w-describe，**中止**。
-2. **組裝＋排版** — `buildDiagram(workflow)`
-   - 依上表映射；操作去向指到 `pages` 內不存在的 Page（手改壞掉）丟 `DiagramConsistencyError`。
-   - 總覽頁：Section 方框**橫排一列**、入口記號與全域導覽記號放上方，導覽邊才會各自往下扇開。
-   - Section 分頁：麵包屑樹，欄＝相對 Section 根的階層深度、列＝深度優先走訪順序（子樹連續佔列）。邊不算座標，直角繞路交給 draw.io。
-3. **序列化** — `renderDiagram(diagram)`
-   - 吐明文 mxGraphModel XML（`mxfile` ＋ 每個分頁一個 `diagram`），刻意不寫 draw.io 存檔才會補的 `modified`／`etag`／`agent`。同一份 diagram 兩次序列化字串完全相同。
-4. **保存** — `saveDiagram(outputRoot, project, xml)`
-   - 寫 `output/<project>/workflow.drawio`，**直接覆寫**。
-5. **回報提醒** — 把 `diagram.warnings` 原文轉述給使用者（見下）。
-6. **開檔驗證** — XML 自洽不等於工具吃得下，所以要真的開一次。driver（`f2w-run/run-diagram.test.ts`）跑完 save 後會用 draw.io CLI 匯出 **全部分頁** 當驗證；找不到執行檔時會出聲 skip，設 `DRAWIO_EXE` 指向它即可。手動驗：
+2. **主線推論**（本步唯一的推論處，**繁體中文**）
+   - 先問 `hasMainflow(outputRoot, project)`：**已存在就沿用**——用 `loadMainflowForDiagram` 讀回驗證，**跳過推論**（含使用者手改過的版本）。要重推論就先刪掉該檔或明講「重推主線」。
+   - 不存在才推論：依 `overview` ＋ 每頁 `purpose` 定出各條主線的 `name`，每條 2–7 個 step，逐步填 `title`（≤12 字）、`note`（≤30 字）、`pages`（≥1，一步可收攏多個 Page）、`edgeLabel`（≤8 字，最後一步不填）。**不在任何主線上的頁全部進 `excludedPages`**，各寫一句 `reason`。
+   - 寫出 `output/<project>/mainflow.json`（路徑見 `mainflowPath`）後**先給使用者看過**再往下走——主線分錯在這裡改最省事。
+3. **組裝** — `buildDiagram(workflow, mainflow)`
+   - 依上表映射：一條主線一個分頁、標題＋細橫線＋單列橫排的步驟與推進邊。步驟框座標算死（欄距 340px），邊不算座標、直角繞路交給 draw.io。
+   - 同時跑一致性硬驗，不一致丟 `DiagramConsistencyError`（見下）。
+4. **序列化** — `renderDiagram(diagram)`
+   - 吐明文 mxGraphModel XML（`mxfile` ＋ 一條主線一個 `diagram`）。色系寫死在序列化層（`FLOW_PALETTE`）以維持確定性；帶 tooltip 的節點包一層 `UserObject`。
+   - 刻意不寫 draw.io 存檔才會補的 `modified`／`etag`／`agent`／`version`——那些帶時間戳。同一份 diagram 兩次序列化字串完全相同。
+5. **保存** — `saveDiagram(outputRoot, project, xml)`
+   - 寫 `output/<project>/mainflow.drawio`，**直接覆寫**。
+6. **回報 warnings** — 把 `diagram.warnings` 原文轉述給**使用者**（不是業主）
+   - 目前只有一條：落選頁清單（`excludedPagesWarning`），逐頁列 route（含 tab）與 `reason`，並提醒「要救回來就把它移進 mainflow.json 的某一步」。
+7. **開檔驗證** — XML 自洽不等於工具吃得下，所以要真的開一次。driver（`f2w-run/run-diagram*.test.ts`）是 vitest、**不叫 LLM**：它讀 `output/<project>/mainflow.json`，**缺檔就出聲 skip**（推論那一步得先由本 skill 跑過）；save 完用 draw.io CLI 匯出**全部分頁**當驗證，找不到執行檔時出聲 skip，設 `DRAWIO_EXE` 指向它即可。手動驗：
 
    ```bash
-   "$LOCALAPPDATA/Programs/draw.io/draw.io.exe" --export --format png --all-pages --scale 1 --border 20 -o nav.png "output/<project>/workflow.drawio"
+   "$LOCALAPPDATA/Programs/draw.io/draw.io.exe" --export --format pdf --all-pages -o mainflow.pdf "output/<project>/mainflow.drawio"
    ```
 
-   匯出成功還不夠——**工具吃得下不代表人看得懂**。改過 layout 就實際看一眼匯出的 PNG，確認邊沒有穿過方框、label 沒有被壓住。
+   `--all-pages` 對 PNG 無效（只吐第 1 頁），要驗「每個分頁都打得開」得走 PDF；只想看單頁 PNG 就不加 `--all-pages`。匯出成功還不夠——**工具吃得下不代表業主看得懂**：真的看一眼匯出的 PDF／PNG，確認單列橫排沒被邊穿過、label 沒有被壓住。
 
-## 兩種一定要回報的情形
+## 四道硬錯：改 mainflow.json 重排，不是放寬驗證
 
-- **退回分層網格**：某個 Section 內的頁面在該段上不同名（長不出單根麵包屑樹）時，那一個 Section 退回「欄＝從入口 BFS 的層級、列＝該層內原順序」的舊版面並發 warning。逐 Section 判定，不是全域。常見於 `route` 與 `tab` 都是平的專案；若非本意，回頭調整 f2w-capture 的命名。
-- **孤立頁**：從入口 BFS 走不到、又不是 `pages[0]` 的 Page。節點照畫在自己 Section 的樹裡、標題帶 `⚠`，並提醒回頭補 `workflow.json` 裡指向它的操作去向——這通常是 f2w-capture 的已知盲點（hash routing、非 `<a>` 導覽）造成的漏邊。
+`buildDiagram` 撞到下列任一種即丟 `DiagramConsistencyError` 並**不產檔**：
+
+- **project 不一致** — `mainflow.json` 與 `workflow.json` 的 `project` 不同名（把別的專案的主線接上來了）。
+- **涵蓋不完整** — `steps[].pages` ∪ `excludedPages` 沒有剛好等於 `workflow.json` 的頁集合：提到不存在的 Page，或有 Page「既不在任何主線步驟裡、也不在 excludedPages」。**每一頁都要表態**，圖上少了什麼才永遠查得到。
+- **相鄰步之間沒有真實操作去向墊背** — 來源步任一頁 → 目標步任一頁，在 `workflow.json` 裡至少要有一條 `destination` 邊。邊 label 可以是業務措辭，但每條邊都得有事實支撐；接不上就**調整步驟順序或重新分步**，不畫虛線。
+- （沿用的上游硬錯）**操作去向指向不存在的 Page** — `workflow.json` 自己被手改壞了。
+
+契約層由 zod 先擋一輪，違反丟 `ContractValidationError`：字數上限（12／30／8）、步數 2–7、`edgeLabel` 位置（除最後一步外每步都要有、最後一步不得有）、每個 Page 只能出現一次。
+
+上述任何一種的處理方式都是**回頭改 `mainflow.json` 重排主線**（改分步、改順序、改字數、把頁移進某一步或移進 `excludedPages`），不是放寬驗證。
 
 ## 逃生口
 
-`workflow.drawio` 是**交付物、不是交接檔**（同 `workflow.xlsx` 語意）：圖不對就回頭改 `workflow.json` 的 `purpose`／`actions`／`destination`／`tab` 再重跑本步。可以在 draw.io 裡圖形化調版面，但**重跑會直接覆寫**——要保留手調的排版請自己另存一份副本（draw.io 存檔後也會補上時間戳屬性、可能改成壓縮格式，與本步產出的明文檔不再逐字元可比）。
+`mainflow.json` 是**交接檔**：主線分錯、步驟名不對、某頁該進圖卻被踢掉，直接手改該檔即可，符合契約就畫得出來。**手改優先、重跑沿用**——本步不會覆寫已存在的 mainflow.json；要 AI 重推一遍就刪檔或明講「重推主線」。
 
-圖上被收掉的操作說明（側欄導覽、tab 互跳、返回操作）**完整保留在 `workflow.xlsx`**——它是操作清單的權威來源。
+`mainflow.drawio` 是**交付物、不是交接檔**（同 `workflow.xlsx` 語意）：圖不對就回頭改 `mainflow.json`（或更上游的 `workflow.json`）再重跑本步。可以在 draw.io 裡圖形化調版面，但**重跑會直接覆寫**——要保留手調的排版請自己另存一份副本（draw.io 存檔後也會補上時間戳屬性、可能改成壓縮格式，與本步產出的明文檔不再逐字元可比）。
+
+圖上被省略的操作（彈窗、明細頁、落選頁、被收攏進某一步的頁）**完整保留在 `workflow.xlsx`**——它是操作清單的權威來源。舊版產出的 `output/<project>/workflow.drawio` 已不再是本步的交付物，是孤兒檔，要不要清由使用者自行決定。
 
 ## 對應實作
 
-`src/diagram/`：`loadWorkflowForDiagram`（前置檢查＋讀回 workflow.json）、`sections`（階層路徑與 Section 分組）、`buildDiagram`（語意映射＋邊分類＋麵包屑樹 layout 的確定性核心）、`renderDiagram`（多分頁 mxGraph XML 序列化）、`saveDiagram`（覆寫保存）。契約見 `src/contracts/workflow.ts`；路徑見 `src/output.ts`（`contractPath(..., "diagram")`）。詞彙見 `CONTEXT.md`。
+`src/diagram/`：`loadWorkflowForDiagram`（前置檢查＋讀回 workflow.json）、`mainflowPath`／`hasMainflow`／`loadMainflowForDiagram`（推論交接檔的路徑、存在判定與讀回驗證）、`buildDiagram(workflow, mainflow)`（語意映射＋單列橫排 layout ＋一致性硬驗的確定性核心，`DiagramConsistencyError`）、`renderDiagram`（多分頁 mxGraph XML 序列化＋色系）、`saveDiagram`（覆寫保存）。`sections.ts`（階層路徑與 Section 分組）與麵包屑樹 layout、分層網格 fallback 已隨 ADR-0008 刪除。
+
+契約見 `src/contracts/mainflow.ts`（`mainflowSchema`、`STEP_TITLE_MAX`／`STEP_NOTE_MAX`／`EDGE_LABEL_MAX`、`STEPS_MIN`／`STEPS_MAX`、`excludedPageSchema`）與 `src/contracts/workflow.ts`；路徑見 `src/output.ts`（契約名 `mainflow`＝`mainflow.json`、`diagram`＝`mainflow.drawio`）。詞彙見 `CONTEXT.md`。

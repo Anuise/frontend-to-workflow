@@ -1,5 +1,7 @@
 # Navigation diagram 改出 draw.io mxGraph，砍掉分歧節點與終點節點
 
+> **layout 決策已由 [ADR-0007](0007-navigation-diagram-one-section-per-page.md) 取代，其餘敘述多已由 [ADR-0008](0008-main-flow-diagram-ai-inferred.md) 取代**：交付物檔名改成 `mainflow.drawio`、圖改畫業主向的業務主線（不再零推論）、入口記號與 BFS 分層網格皆已退場、tooltip 承載的內容由「不換頁的操作」換成「這一步收攏了哪些 Page」、driver 的匯出驗證改走 PDF ＋ `--all-pages`。仍然有效的是三項：明文不壓縮、邊的座標交給 draw.io、以及「圖上收掉的資訊降 tooltip」這個機制本身。
+
 `f2w-bpmn` 更名為 `f2w-diagram`，產物由 `workflow.bpmn`（BPMN 2.0 ＋ DI）換成 `workflow.drawio`（明文 mxGraphModel）。ADR-0005 的三個決策中，**圖的主體是導覽、零推論、確定性生成**完整保留；**格式**與**多出口插 `exclusiveGateway`** 兩項由本 ADR 取代。起因是實測：BPMN 2.0 檔在 draw.io 桌面版根本開不起來（不吃 `.bpmn`），在 bpmn.io 又跳一整排 `no bpmnElement referenced in <bpmndi:BPMNEdge/>` 匯入警告——ADR-0005 宣稱的兩個檢視工具都不順，而收圖的對象只用 draw.io，沒有要交 BPMN 給流程／Camunda 那邊。
 
 ## Considered Options

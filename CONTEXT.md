@@ -36,25 +36,17 @@ _Avoid_: intro, abstract
 最終交付物 `workflow.xlsx`：含「概述」與「逐頁工作流程」兩個 sheet，逐頁列出 Workflow description 並嵌入截圖縮圖。
 _Avoid_: report, spreadsheet, 報表
 
-**Navigation diagram（導覽流程圖）**:
-以 Page 為節點、換頁操作為有向邊的導覽交付圖 `workflow.drawio`；由 `f2w-diagram` 從 Workflow description 確定性生成、零推論。畫的是使用者在頁面之間怎麼走，不含業務決策條件、角色泳道與訊息事件。檔內含多個 draw.io 分頁：第 1 頁總覽，之後每個 Section 一頁。
-_Avoid_: 業務流程圖, BPMN 圖, flowchart, 流程圖（泛稱）
+**Main flow diagram（主線流程圖）**:
+以業務 Step 為節點、步驟之間的業務轉場為有向邊的交付圖 `mainflow.drawio`；讀者是**業主**。由 `f2w-diagram` 從 Workflow description ＋ Main flow 組出（`buildDiagram(workflow, mainflow)`）：一條主線一個 draw.io 分頁、沒有總覽頁（第 1 頁就是第一條主線），節點是業務動作而不是 Page。圖上不標「推論·待確認」也不標 ⚠——要乾淨好懂，推論的表態留在 `mainflow.json` 與對話回報。不含業務決策條件、角色泳道與訊息事件。
+_Avoid_: BPMN 圖, flowchart, 流程圖（泛稱）, 網站地圖, Navigation diagram（已被取代的舊語）
 
-**Section（區段）**:
-Navigation diagram 的分頁單位：一群 Page ＋ 它們的麵包屑樹。由階層路徑（`route` 的 path 段 ＋ `tab` 以全形直線切開的段）中第一個具區辨力的段切出。**使用者口語的「一條完整的路線」即指 Section。**
-_Avoid_: Route（專指 `pages[].route` 的 URL 路徑）, Flow（撞 workflow）, 模組（產品功能區的泛稱）
+**Main flow（主線）**:
+AI 從 Overview ＋ 每頁的頁面用途推論出的一條業務主線；是 `mainflow.json` 的 `flows[]` 一筆，也是 draw.io 的一個分頁單位。每條主線 2–7 個 Step、單列橫排不折行，各自一個色系。推論落在交接檔 `mainflow.json`：**可手改，已存在就沿用、不重推論**（要重推得先刪檔或明講）。有涵蓋完整性硬驗——`steps[].pages` ∪ `excludedPages` 必須剛好等於 `workflow.json` 的頁集合、每頁只出現一次；不在任何主線上的落選頁圖上完全不提，只在 `excludedPages`（含一句 `reason`）與對話 warning 交代，完整操作清單仍以 `workflow.xlsx` 為權威。
+_Avoid_: Section（已退場的舊分頁單位）, Route（專指 `pages[].route` 的 URL 路徑）, 模組（產品功能區的泛稱）
 
-**Global nav marker（全域導覽記號）**:
-總覽頁上代表「側欄可從任一頁跳到各 Section 首頁」的單一節點。跨 Section 且目的地為該 Section 首頁的邊全部收成它發出的邊——驗證資料 73 條收成 8 條。與 Entry marker（入口記號）同一類的合成節點。
-_Avoid_: 側邊欄節點, menu, 導覽列
-
-**Implied node（隱含節點）**:
-麵包屑階層有這一段、但 `workflow.json` 裡沒有對應 Page 而生出的框（例如只有 tab 子頁的 `模型服務詳情`）。由階層路徑確定性推得、不讀 label 語意，因此仍屬零推論——與 Inferred work item 的「推論·待確認」是無關的兩件事。
-_Avoid_: 虛擬節點, 假節點, 推論節點
-
-**Tab group（tab 群組）**:
-圈住同父 tab 子頁的框，標題固定為「可互相切換的 tab」。只有該組兄弟之間實際存在互跳邊時才生框，平行子頁不生框。取代兄弟↔兄弟的互跳邊——驗證資料 46 條收成 0。
-_Avoid_: 泳道, swimlane, 容器
+**Step（步驟）**:
+主線上的一個業務層級動作，是圖上一個節點：粗體「編號. 業務動作名」＋ 小字說明的兩段式。**一步可收攏多個 Page**（例如服務維護的五個 tab 收成「維運模型服務」一步）；只留主幹，彈窗與明細頁不畫，收攏的頁不上圖面、只進 tooltip（抬頭「此步驟涵蓋的頁面：」）。字數上限寫進契約由驗證擋下：標題 `title` ≤12 字、小字 `note` ≤30 字、往下一步的邊 label `edgeLabel` ≤8 字（掛在來源步，最後一步不得有）。邊 label 是 AI 寫的業務轉場動作，但相鄰兩步之間必須有真實的操作去向墊背，接不上就丟 `DiagramConsistencyError` 要求改順序或重新分步——不畫虛線。
+_Avoid_: Page（Step 比 Page 大，一步可收攏多頁）, 節點（泛稱）, 任務（撞 Work item）
 
 **Work item（工項）**:
 一筆可分派、可畫押的最小工作單位；錨定在某個 Page，分前端／後端兩層，是 `workitems.xlsx` 每列的單位。
@@ -80,7 +72,7 @@ _Avoid_: 空白表／填好的表（泛稱）
 
 **權責泳道圖（Responsibility swimlane diagram）**:
 人畫的 draw.io 泳道圖：泳道＝分工方（Party）、格＝該方負責的元件、邊＝呼叫／資料流。**平台級共用文件、可跨 project**，是 `f2w-sourcing` 派工的主要依據；AI 直接讀圖推斷（不經確定性解析器），錯配靠人核兜底。
-_Avoid_: Navigation diagram（那是 f2w-diagram 的零推論產物，明文不含泳道）, 流程圖（泛稱）, BPMN 圖
+_Avoid_: Main flow diagram（那是 f2w-diagram 的業主向產物，明文不含泳道）, 流程圖（泛稱）, BPMN 圖
 
 **Party（分工方）**:
 權責泳道圖中一條泳道代表的責任單位；自家與外部廠商一視同仁。分工方名集合 = 泳道名 ∪ Vendor spec 檔名。

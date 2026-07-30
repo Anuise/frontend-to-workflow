@@ -13,7 +13,10 @@ describe("output paths", () => {
     expect(contractPath("output", "demo", "pages")).toBe(join("output", "demo", "pages.json"));
     expect(contractPath("output", "demo", "workflow")).toBe(join("output", "demo", "workflow.json"));
     expect(contractPath("output", "demo", "workbook")).toBe(join("output", "demo", "workflow.xlsx"));
-    expect(contractPath("output", "demo", "diagram")).toBe(join("output", "demo", "workflow.drawio"));
+    expect(contractPath("output", "demo", "mainflow")).toBe(join("output", "demo", "mainflow.json"));
+    expect(contractPath("output", "demo", "diagram")).toBe(
+      join("output", "demo", "mainflow.drawio"),
+    );
     expect(contractPath("output", "demo", "workitems")).toBe(
       join("output", "demo", "workitems.json"),
     );
