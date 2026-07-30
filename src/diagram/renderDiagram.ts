@@ -14,6 +14,9 @@ const FLOW_PALETTE = [
   { fill: "#e1d5e7", stroke: "#9673a6" },
   { fill: "#fff2cc", stroke: "#d6b656" },
   { fill: "#f8cecc", stroke: "#b85450" },
+  { fill: "#b0e3e6", stroke: "#0e8088" },
+  { fill: "#d0cee2", stroke: "#56517e" },
+  { fill: "#eeeeee", stroke: "#666666" },
 ] as const;
 
 function colorOf(colorIndex: number): (typeof FLOW_PALETTE)[number] {

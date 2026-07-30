@@ -41,8 +41,8 @@ _Avoid_: report, spreadsheet, 報表
 _Avoid_: BPMN 圖, flowchart, 流程圖（泛稱）, 網站地圖, Navigation diagram（已被取代的舊語）
 
 **Main flow（主線）**:
-AI 從 Overview ＋ 每頁的頁面用途推論出的一條業務主線；是 `mainflow.json` 的 `flows[]` 一筆，也是 draw.io 的一個分頁單位。每條主線 2–7 個 Step、單列橫排不折行，各自一個色系。推論落在交接檔 `mainflow.json`：**可手改，已存在就沿用、不重推論**（要重推得先刪檔或明講）。有涵蓋完整性硬驗——`steps[].pages` ∪ `excludedPages` 必須剛好等於 `workflow.json` 的頁集合、每頁只出現一次；不在任何主線上的落選頁圖上完全不提，只在 `excludedPages`（含一句 `reason`）與對話 warning 交代，完整操作清單仍以 `workflow.xlsx` 為權威。
-_Avoid_: Section（已退場的舊分頁單位）, Route（專指 `pages[].route` 的 URL 路徑）, 模組（產品功能區的泛稱）
+一個**頂層 Page 分類**（此類專案即側欄模組）收成的一條流程；是 `mainflow.json` 的 `flows[]` 一筆，也是 draw.io 的一個分頁單位。`name` **照抄該分類名、不改字**，`flows` 順序照 `workflow.json` 的頁序——業主看圖就是看側欄。邊界不推論，推論的是每條主線切成幾步、每步怎麼措辭（素材是每頁的頁面用途，Overview 只當語氣參考）。每條主線 1–10 個 Step、單列橫排不折行，各自一個色系（9 色色表依 `flows` 順序取、超過循環）；步數不必每頁一樣長，頁多的分類切細、只有一頁的分類就是一步。推論落在交接檔 `mainflow.json`：**可手改，已存在就沿用、不重推論**（要重推得先刪檔或明講）。有涵蓋完整性硬驗——`steps[].pages` ∪ `excludedPages` 必須剛好等於 `workflow.json` 的頁集合、每頁只出現一次；不在任何主線上的落選頁圖上完全不提，只在 `excludedPages`（含一句 `reason`）與對話 warning 交代，完整操作清單仍以 `workflow.xlsx` 為權威；頂層分類全部上圖時 `excludedPages` 就是空陣列。
+_Avoid_: Section（已退場的舊分頁單位）, Route（專指 `pages[].route` 的 URL 路徑）, 模組（產品功能區的泛稱；主線邊界雖與它一致，文件上一律稱主線）
 
 **Step（步驟）**:
 主線上的一個業務層級動作，是圖上一個節點：粗體「編號. 業務動作名」＋ 小字說明的兩段式。**一步可收攏多個 Page**（例如服務維護的五個 tab 收成「維運模型服務」一步）；只留主幹，彈窗與明細頁不畫，收攏的頁不上圖面、只進 tooltip（抬頭「此步驟涵蓋的頁面：」）。字數上限寫進契約由驗證擋下：標題 `title` ≤12 字、小字 `note` ≤30 字、往下一步的邊 label `edgeLabel` ≤8 字（掛在來源步，最後一步不得有）。邊 label 是 AI 寫的業務轉場動作，但相鄰兩步之間必須有真實的操作去向墊背，接不上就丟 `DiagramConsistencyError` 要求改順序或重新分步——不畫虛線。

@@ -11,9 +11,9 @@ export const STEP_TITLE_MAX = 12;
 export const STEP_NOTE_MAX = 30;
 export const EDGE_LABEL_MAX = 8;
 
-/** 一條主線的步數區間：至少要有一個轉場才算流程，太多在單列橫排上看不完。 */
-export const STEPS_MIN = 2;
-export const STEPS_MAX = 7;
+/** 一條主線的步數區間：一個頂層 Page 分類就是一條主線，頁少時可只有一步；太多在單列橫排上看不完。 */
+export const STEPS_MIN = 1;
+export const STEPS_MAX = 10;
 
 /**
  * 主線上的一個 Step（步驟）：業務層級的一個動作。

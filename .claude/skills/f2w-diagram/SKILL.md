@@ -1,20 +1,22 @@
 ---
 name: f2w-diagram
-description: frontend-to-workflow 管線中與 f2w-export 並列的分支步，也是唯一畫圖的推論步。讀取 workflow.json，以 Overview ＋ 每頁 purpose 推論出各條主線並落成交接檔 mainflow.json（可手改；已存在就沿用、不重推論），再由純函式產出多分頁的 Main flow diagram mainflow.drawio——一條主線一張大分頁、沒有總覽頁，頁內單列橫排 2–7 個編號步驟、只留主幹（彈窗與明細頁不畫），一步可收攏多個 Page（收攏的頁只進 tooltip）。讀者是業主，圖上乾淨：不標「推論·待確認」、不標 ⚠。缺前置檔時提示先跑 f2w-describe。Use when the user wants to run f2w-diagram, infer a project's main business flows, or produce mainflow.json and the Main flow diagram mainflow.drawio for the frontend-to-workflow pipeline.
+description: frontend-to-workflow 管線中與 f2w-export 並列的分支步，也是唯一畫圖的推論步。讀取 workflow.json，按頂層 Page 分類切主線（一個分類一條主線、分頁名照抄、順序照頁序），落成交接檔 mainflow.json（可手改；已存在就沿用、不重推論），再由純函式產出多分頁的 Main flow diagram mainflow.drawio——一條主線一張大分頁、沒有總覽頁，頁內單列橫排 1–10 個編號步驟、只留主幹（彈窗與明細頁不畫），一步可收攏多個 Page（收攏的頁只進 tooltip）。讀者是業主，圖上乾淨：不標「推論·待確認」、不標 ⚠。缺前置檔時提示先跑 f2w-describe。Use when the user wants to run f2w-diagram, infer a project's main business flows, or produce mainflow.json and the Main flow diagram mainflow.drawio for the frontend-to-workflow pipeline.
 ---
 
 # f2w-diagram：主線流程圖（Main flow diagram）
 
-與 `f2w-export` **並列的分支步**（不是插入步、不佔步驟編號）：兩者都只讀 `f2w-describe` 產出的 `output/<project>/workflow.json`、互不依賴、可各自單獨重跑。本步把整個專案收斂成幾條 **Main flow（主線）**，畫成一份 **Main flow diagram**——draw.io 檔 `output/<project>/mainflow.drawio`（明文 mxGraphModel、含座標、多分頁），draw.io 開起來即有版面。
+與 `f2w-export` **並列的分支步**（不是插入步、不佔步驟編號）：兩者都只讀 `f2w-describe` 產出的 `output/<project>/workflow.json`、互不依賴、可各自單獨重跑。本步把專案的每個**頂層 Page 分類**各收成一條 **Main flow（主線）**，畫成一份 **Main flow diagram**——draw.io 檔 `output/<project>/mainflow.drawio`（明文 mxGraphModel、含座標、多分頁），draw.io 開起來即有版面。
 
 前置：`output/<project>/workflow.json`（由 f2w-describe 產出）。缺件即中止並提示先跑 f2w-describe。
 產出：`output/<project>/mainflow.json`（推論交接檔、可手改）與 `output/<project>/mainflow.drawio`（交付物）。
 
-決策與理由見 `docs/adr/0006-navigation-diagram-as-drawio.md`（draw.io 明文不壓縮、邊座標交給 draw.io、tooltip 承載圖上收掉的資訊——這三條仍有效）與 `docs/adr/0008-main-flow-diagram-ai-inferred.md`（本設計：改成主線流程圖、推論落在 mainflow.json）。`docs/adr/0005-navigation-diagram-as-bpmn.md` 是歷史（它的「畫的是導覽不是業務流程」與「零推論」兩條底線已被取代）；`docs/adr/0007-navigation-diagram-one-section-per-page.md` 整份已被取代（Section 分頁、麵包屑樹、收邊三規則、分層網格 fallback、孤立頁 warning 全部退場）。
+決策與理由見 `docs/adr/0006-navigation-diagram-as-drawio.md`（draw.io 明文不壓縮、邊座標交給 draw.io、tooltip 承載圖上收掉的資訊——這三條仍有效）、`docs/adr/0008-main-flow-diagram-ai-inferred.md`（改成主線流程圖、推論落在 mainflow.json）與 `docs/adr/0009-main-flow-per-top-level-page-group.md`（**主線邊界＝頂層 Page 分類、分頁名照抄、步數 1–10**，取代 0008 的邊界那一節）。`docs/adr/0005-navigation-diagram-as-bpmn.md` 是歷史（它的「畫的是導覽不是業務流程」與「零推論」兩條底線已被取代）；`docs/adr/0007-navigation-diagram-one-section-per-page.md` 整份已被取代（Section 分頁、麵包屑樹、收邊三規則、分層網格 fallback、孤立頁 warning 全部退場）。
 
 ## 這一步是推論步
 
-本步**會推論**：`workflow.json` 裡沒有「哪幾條主線、每條分幾步」這件事，那是業務層級的歸納。推論素材只有兩樣——`overview`（跨頁概述，通常已自報這個系統有哪幾條主線）與每頁的 `purpose`。
+本步**會推論**：`workflow.json` 裡沒有「每條主線分幾步、每步叫什麼」這件事，那是業務層級的歸納。推論素材是每頁的 `purpose`（步驟措辭與分步依據）與 `overview`（業務語氣參考）。
+
+**主線邊界不推論**：一條主線＝一個**頂層 Page 分類**（此類專案即側欄模組），`flows[].name` **照抄該分類名、不改字**，`flows` 順序照 `workflow.json` 的頁序。這樣業主看圖就是看側欄，不必把圖上的名字對回系統。分類本身仍由 AI 從 `pages[]` 讀出來（`｜` 階層是 f2w-capture 的命名慣例、不是契約欄位，所以 `src/` 不解析它）。
 
 推論結果**一律先落成 `mainflow.json`**，再由純函式照它畫圖（前例＝`f2w-sourcing` 吃外部事實產出新契約檔）。`src/diagram/` 這一側維持純函式、可斷言：不讀語意、不猜順序，只做版面與一致性硬驗。
 
@@ -22,15 +24,17 @@ description: frontend-to-workflow 管線中與 f2w-export 並列的分支步，�
 
 ## 這張圖只畫主幹
 
-一條主線一張大分頁、**沒有總覽頁**（第 1 頁就是第一條主線）。頁內是**單列橫排、不折行**的主鏈，2–7 步，**只留主幹**——彈窗與明細頁不畫。**一步可收攏多個 Page**（例如服務維護的五個 tab 收成「維運模型服務」一步），收攏的頁只進 tooltip、不上圖面。
+一條主線一張大分頁、**沒有總覽頁**（第 1 頁就是第一條主線）。頁內是**單列橫排、不折行**的主鏈，1–10 步，**只留主幹**——彈窗與明細頁不畫。**一步可收攏多個 Page**（例如服務維護的五個 tab 收成「維運模型服務」一步），收攏的頁只進 tooltip、不上圖面。
 
-業主向的字數上限寫進契約由 zod 擋下，不靠提示詞自律：節點標題 `title` ≤ **12** 字（`STEP_TITLE_MAX`）、節點小字 `note` ≤ **30** 字（`STEP_NOTE_MAX`）、邊 label `edgeLabel` ≤ **8** 字（`EDGE_LABEL_MAX`）、一條主線 **2–7** 步（`STEPS_MIN`／`STEPS_MAX`）。
+步數**不必每頁一樣長**：頁多的分類切細（0729 的 `算力排程與工作負載` 15 頁切 7 步）、頁少的就 1–2 步（`系統設定` 只有 1 頁＝1 步）。不要為了讓每頁看起來一樣長而併分類或硬拆步。
+
+業主向的字數上限寫進契約由 zod 擋下，不靠提示詞自律：節點標題 `title` ≤ **12** 字（`STEP_TITLE_MAX`）、節點小字 `note` ≤ **30** 字（`STEP_NOTE_MAX`）、邊 label `edgeLabel` ≤ **8** 字（`EDGE_LABEL_MAX`）、一條主線 **1–10** 步（`STEPS_MIN`／`STEPS_MAX`）。
 
 ## 語意映射
 
 | mainflow.json | draw.io（mainflow.drawio） |
 |---|---|
-| 每個 `flows[n]` | 一個分頁（`Diagram_<n>`，分頁名＝主線 `name`）：頂端 24px 粗體主線標題（`Title_<n>`）＋ 正下方同色系細橫線（`Rule_<n>`）。整頁色系依 `flows` 順序取固定 6 色色表、超過循環 |
+| 每個 `flows[n]` | 一個分頁（`Diagram_<n>`，分頁名＝主線 `name`）：頂端 24px 粗體主線標題（`Title_<n>`）＋ 正下方同色系細橫線（`Rule_<n>`）。整頁色系依 `flows` 順序取固定 9 色色表、超過循環 |
 | 每個 `steps[n]` | 單列橫排的一個步驟框（`Step_<flow>_<step>`，240×100、圓角淡底深框）：兩段式＝**粗體「編號. `title`」** ＋ 小字 `note` |
 | `steps[].pages` | 該步驟框的 draw.io tooltip，抬頭「此步驟涵蓋的頁面：」逐頁列 route（含 tab）；**不上圖面** |
 | `steps[].edgeLabel` | 往下一步的推進邊（`Edge_<flow>_<step>`）的 label——AI 寫的**業務轉場動作**，不逐字引用 action label。最後一步不得有 |
@@ -42,7 +46,7 @@ description: frontend-to-workflow 管線中與 f2w-export 並列的分支步，�
    - 缺 `workflow.json` 丟 `MissingPrerequisiteError`，提示先跑 f2w-describe，**中止**。
 2. **主線推論**（本步唯一的推論處，**繁體中文**）
    - 先問 `hasMainflow(outputRoot, project)`：**已存在就沿用**——用 `loadMainflowForDiagram` 讀回驗證，**跳過推論**（含使用者手改過的版本）。要重推論就先刪掉該檔或明講「重推主線」。
-   - 不存在才推論：依 `overview` ＋ 每頁 `purpose` 定出各條主線的 `name`，每條 2–7 個 step，逐步填 `title`（≤12 字）、`note`（≤30 字）、`pages`（≥1，一步可收攏多個 Page）、`edgeLabel`（≤8 字，最後一步不填）。**不在任何主線上的頁全部進 `excludedPages`**，各寫一句 `reason`。
+   - 不存在才推論：先把 `pages[]` 按**頂層分類**分組，一組一條主線、`name` 照抄分類名、順序照頁序；再依每頁 `purpose` 把該組切成 1–10 個 step，逐步填 `title`（≤12 字）、`note`（≤30 字）、`pages`（≥1，一步可收攏多個 Page）、`edgeLabel`（≤8 字，最後一步不填）。分步時**先看操作去向再定順序**：模組內部常是樞紐頁連出所有彈窗、彈窗只連回樞紐（hub-and-spoke），這種時候彈窗與同層 tab 要**併進樞紐那一步**，否則過不了真實邊硬驗。真的不該上圖的頁才進 `excludedPages`（各寫一句 `reason`）；分類全出時它就是空陣列。
    - 寫出 `output/<project>/mainflow.json`（路徑見 `mainflowPath`）後**先給使用者看過**再往下走——主線分錯在這裡改最省事。
 3. **組裝** — `buildDiagram(workflow, mainflow)`
    - 依上表映射：一條主線一個分頁、標題＋細橫線＋單列橫排的步驟與推進邊。步驟框座標算死（欄距 340px），邊不算座標、直角繞路交給 draw.io。
@@ -71,7 +75,7 @@ description: frontend-to-workflow 管線中與 f2w-export 並列的分支步，�
 - **相鄰步之間沒有真實操作去向墊背** — 來源步任一頁 → 目標步任一頁，在 `workflow.json` 裡至少要有一條 `destination` 邊。邊 label 可以是業務措辭，但每條邊都得有事實支撐；接不上就**調整步驟順序或重新分步**，不畫虛線。
 - （沿用的上游硬錯）**操作去向指向不存在的 Page** — `workflow.json` 自己被手改壞了。
 
-契約層由 zod 先擋一輪，違反丟 `ContractValidationError`：字數上限（12／30／8）、步數 2–7、`edgeLabel` 位置（除最後一步外每步都要有、最後一步不得有）、每個 Page 只能出現一次。
+契約層由 zod 先擋一輪，違反丟 `ContractValidationError`：字數上限（12／30／8）、步數 1–10、`edgeLabel` 位置（除最後一步外每步都要有、最後一步不得有）、每個 Page 只能出現一次。
 
 上述任何一種的處理方式都是**回頭改 `mainflow.json` 重排主線**（改分步、改順序、改字數、把頁移進某一步或移進 `excludedPages`），不是放寬驗證。
 

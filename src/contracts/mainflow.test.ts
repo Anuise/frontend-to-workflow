@@ -66,17 +66,22 @@ describe("parseMainflow", () => {
     expect(mutated((d) => delete d.flows[0]!.steps[1]!.edgeLabel)).toThrow(EDGE_LABEL_RULE_MESSAGE);
   });
 
-  it("一條主線少於 2 步或多於 7 步都擋下", () => {
-    // 只剩一步就沒有任何轉場，不算流程
+  it("一步的主線放行（頂層分類只有一頁），零步或多於 10 步擋下", () => {
+    expect(
+      parseMainflow({
+        ...structuredClone(valid),
+        flows: [{ name: "系統設定", steps: [step("管理平台組態", "首頁")] }],
+      }).flows[0]!.steps,
+    ).toHaveLength(1);
     expect(
       mutated((d) => {
-        d.flows[0]!.steps = [step("只有一步", "首頁")];
+        d.flows[0]!.steps = [];
       }),
     ).toThrow(ContractValidationError);
     expect(
       mutated((d) => {
         d.flows[0]!.steps = [
-          ...Array.from({ length: 7 }, (_, i) => step(`第${i}步`, `tab${i}`, "往下")),
+          ...Array.from({ length: 10 }, (_, i) => step(`第${i}步`, `tab${i}`, "往下")),
           step("最後", "尾"),
         ];
       }),
