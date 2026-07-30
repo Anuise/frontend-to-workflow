@@ -1,0 +1,28 @@
+{
+  "project": "sample-frontend",
+  "flows": [
+    {
+      "name": "設定個人帳號",
+      "steps": [
+        {
+          "title": "進入首頁",
+          "note": "從首頁開始使用這個示範前端",
+          "pages": [{ "route": "/" }],
+          "edgeLabel": "前往設定"
+        },
+        {
+          "title": "編輯個人資料",
+          "note": "填寫姓名與 Email",
+          "pages": [{ "route": "/settings", "tab": "個人資料" }],
+          "edgeLabel": "切到帳號"
+        },
+        {
+          "title": "維護帳號安全",
+          "note": "設定帳號密碼",
+          "pages": [{ "route": "/settings", "tab": "帳號" }]
+        }
+      ]
+    }
+  ],
+  "excludedPages": [{ "route": "/about", "reason": "專案說明頁，不屬使用主線" }]
+}

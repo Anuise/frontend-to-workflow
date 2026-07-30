@@ -14,11 +14,11 @@ import {
   saveDiagram,
 } from "../src/diagram";
 
-// f2w-diagram 驅動：讀回 workflow.json ＋ mainflow.json，組出 Main flow diagram 並寫成
-// mainflow.drawio，最後用 draw.io CLI 匯出當「這份檔真的打得開」的驗證。
+// f2w-diagram 驅動（0729 專案）：讀回 workflow.json ＋ mainflow.json，組出 Main flow diagram
+// 並寫成 mainflow.drawio，最後用 draw.io CLI 匯出當「這份檔真的打得開」的驗證。
 // 主線推論本身要 LLM，vitest 做不到——缺 mainflow.json 就出聲 skip，由 skill 在對話中補。
 const OUTPUT_ROOT = "output";
-const PROJECT = "new_0724_AI六大模組管理平台_桃園智發會_最新版";
+const PROJECT = "0729_AI六大模組管理平台_5E_AI平台最新版";
 
 /** draw.io 執行檔：DRAWIO_EXE 優先，否則掃兩個常見安裝路徑；都找不到回 null。 */
 function findDrawio(): string | null {
@@ -76,8 +76,7 @@ test("f2w-diagram 產出 mainflow.drawio（Main flow diagram）", { timeout: 180
     console.log("SKIP 匯出驗證：找不到 draw.io，設 DRAWIO_EXE 指向執行檔");
     return;
   }
-  // 用 PDF 而非 PNG：draw.io CLI 的 --all-pages 對 PNG 無效（只吐第 1 頁），
-  // 要驗證「每條主線那一頁都打得開」只有 PDF 走得通。
+  // 用 PDF 而非 PNG：draw.io CLI 的 --all-pages 對 PNG 無效（只吐第 1 頁）。
   const pdf = join(mkdtempSync(join(tmpdir(), "f2w-diagram-export-")), "mainflow.pdf");
   execFileSync(exe, ["--export", "--format", "pdf", "--all-pages", "-o", pdf, path], {
     timeout: 150_000,

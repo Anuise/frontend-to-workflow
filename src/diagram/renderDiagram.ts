@@ -1,37 +1,47 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { contractPath } from "../output";
-import type {
-  DiagramEdge,
-  DiagramGroup,
-  DiagramNode,
-  DiagramPage,
-  NavigationDiagram,
-} from "./buildDiagram";
+import type { DiagramEdge, DiagramNode, DiagramPage, MainFlowDiagram } from "./buildDiagram";
 
-/** draw.io 的節點樣式：入口是小綠圓、全域導覽是虛線灰底、Section 方框是總覽頁的入口、Page 是圓角方框。 */
-const NODE_STYLE: Record<DiagramNode["kind"], string> = {
-  entry: "ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;",
-  globalNav:
-    "rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=9;",
-  section:
-    "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;",
-  implied:
-    "rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#9673a6;fontSize=10;fontStyle=2;",
-  page: "rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;",
-};
+/**
+ * 每條主線一個色系（依主線順序取，超過就循環）。
+ * 用 draw.io 的標準配色，印黑白時淡底仍分得出深淺。
+ */
+const FLOW_PALETTE = [
+  { fill: "#dae8fc", stroke: "#6c8ebf" },
+  { fill: "#d5e8d4", stroke: "#82b366" },
+  { fill: "#ffe6cc", stroke: "#d79b00" },
+  { fill: "#e1d5e7", stroke: "#9673a6" },
+  { fill: "#fff2cc", stroke: "#d6b656" },
+  { fill: "#f8cecc", stroke: "#b85450" },
+  { fill: "#b0e3e6", stroke: "#0e8088" },
+  { fill: "#d0cee2", stroke: "#56517e" },
+  { fill: "#eeeeee", stroke: "#666666" },
+] as const;
+
+function colorOf(colorIndex: number): (typeof FLOW_PALETTE)[number] {
+  return FLOW_PALETTE[colorIndex % FLOW_PALETTE.length]!;
+}
+
+/** 步驟框：圓角、淡底、深框線，兩段式文字置中。 */
+function stepStyle(colorIndex: number): string {
+  const { fill, stroke } = colorOf(colorIndex);
+  return `rounded=1;arcSize=12;whiteSpace=wrap;html=1;verticalAlign=middle;fillColor=${fill};strokeColor=${stroke};fontSize=12;`;
+}
+
+/** 主線標題：24px 粗體、無框無底，字色跟著該主線的色系。 */
+function flowTitleStyle(colorIndex: number): string {
+  return `text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;fontColor=${colorOf(colorIndex).stroke};`;
+}
+
+/** 標題下的細橫線：同色系的實心細長方形。 */
+function ruleStyle(colorIndex: number): string {
+  return `rounded=0;html=1;fillColor=${colorOf(colorIndex).stroke};strokeColor=none;`;
+}
 
 /** 邊一律走直角、繞路交給 draw.io 自己算；label 壓白底才不被線劃穿。 */
 const EDGE_STYLE =
-  "edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;fontSize=8;labelBackgroundColor=#ffffff;";
-
-/** tab 群組框的樣式：淡色背板、標題靠上，不擋住裡面的節點。 */
-const GROUP_STYLE =
-  "rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=#f9f7fd;strokeColor=#9673a6;verticalAlign=top;align=left;spacingLeft=8;fontSize=9;fontColor=#7a5c95;";
-
-/** 兩端都從下緣進出：橫向的轉場邊會繞到那一列底下走，不穿過中間的方框。 */
-const BELOW_ROW_PORTS =
-  "exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;";
+  "edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;fontSize=10;fontColor=#666666;strokeColor=#999999;labelBackgroundColor=#ffffff;";
 
 /** 版面右下再留的白邊。 */
 const PAGE_MARGIN = 200;
@@ -54,35 +64,33 @@ function escapeTooltip(value: string): string {
 }
 
 /**
- * 節點的顯示值。有短標題時做成兩段式：第一行粗體標題負責掃視、第二行小字負責理解。
+ * 節點的顯示值。步驟是兩段式：第一行粗體「編號＋業務動作名」負責掃視、第二行小字說明負責理解。
  * 整串 HTML escape 一次——draw.io 讀進屬性後還原成標記再以 html=1 渲染。
  */
 function nodeValue(node: DiagramNode): string {
   if (!node.title) return escapeXml(node.label);
-  return escapeXml(
-    `<b>${node.title}</b><br><font style="font-size:9px">${node.label}</font>`,
-  );
+  return escapeXml(`<b>${node.title}</b><br><font style="font-size:10px">${node.label}</font>`);
+}
+
+function styleOf(node: DiagramNode): string {
+  if (node.kind === "flowTitle") return flowTitleStyle(node.colorIndex);
+  if (node.kind === "rule") return ruleStyle(node.colorIndex);
+  return stepStyle(node.colorIndex);
 }
 
 function renderNode(node: DiagramNode): string {
   const geometry = `<mxGeometry x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" as="geometry" />`;
-  const style = NODE_STYLE[node.kind];
-  if (!node.tooltip && !node.linkToPageId) {
+  const style = styleOf(node);
+  if (!node.tooltip) {
     return [
       `        <mxCell id="${node.id}" value="${nodeValue(node)}" style="${style}" vertex="1" parent="1">`,
       `          ${geometry}`,
       "        </mxCell>",
     ].join("\n");
   }
-  // 帶 tooltip 或分頁連結的節點要包一層 UserObject——mxCell 本身沒有這兩個屬性
-  const attrs = [
-    `id="${node.id}"`,
-    `label="${nodeValue(node)}"`,
-    ...(node.tooltip ? [`tooltip="${escapeTooltip(node.tooltip)}"`] : []),
-    ...(node.linkToPageId ? [`link="data:page/id,${escapeXml(node.linkToPageId)}"`] : []),
-  ].join(" ");
+  // 帶 tooltip 的節點要包一層 UserObject——mxCell 本身沒有 tooltip 屬性
   return [
-    `        <UserObject ${attrs}>`,
+    `        <UserObject id="${node.id}" label="${nodeValue(node)}" tooltip="${escapeTooltip(node.tooltip)}">`,
     `          <mxCell style="${style}" vertex="1" parent="1">`,
     `            ${geometry}`,
     "          </mxCell>",
@@ -90,40 +98,23 @@ function renderNode(node: DiagramNode): string {
   ].join("\n");
 }
 
-/** tab 群組框：先於成員輸出，才會落在它們底下當背板。 */
-function renderGroup(group: DiagramGroup): string {
-  return [
-    `        <mxCell id="${group.id}" value="${escapeXml(group.label)}" style="${GROUP_STYLE}" vertex="1" parent="1">`,
-    `          <mxGeometry x="${group.x}" y="${group.y}" width="${group.width}" height="${group.height}" as="geometry" />`,
-    "        </mxCell>",
-  ].join("\n");
-}
-
 function renderEdge(edge: DiagramEdge): string {
-  const style = edge.routeBelow ? `${EDGE_STYLE}${BELOW_ROW_PORTS}` : EDGE_STYLE;
   return [
-    `        <mxCell id="${edge.id}" value="${edge.label ? escapeXml(edge.label) : ""}" style="${style}" edge="1" parent="1" source="${edge.sourceId}" target="${edge.targetId}">`,
+    `        <mxCell id="${edge.id}" value="${escapeXml(edge.label)}" style="${EDGE_STYLE}" edge="1" parent="1" source="${edge.sourceId}" target="${edge.targetId}">`,
     '          <mxGeometry relative="1" as="geometry" />',
     "        </mxCell>",
   ].join("\n");
 }
 
-/**
- * 把 Navigation diagram 序列化成 draw.io 的 mxGraphModel XML（明文、不壓縮）。
- * 同一份 diagram 兩次序列化字串完全相同——確定性、重跑幂等。
- * 刻意不寫 draw.io 存檔時會補的 modified／etag／agent／version：那些帶時間戳，會破壞確定性。
- */
 function renderPage(page: DiagramPage): string[] {
-  const boxes = [...page.nodes, ...page.groups];
-  const width = Math.max(0, ...boxes.map((box) => box.x + box.width)) + PAGE_MARGIN;
-  const height = Math.max(0, ...boxes.map((box) => box.y + box.height)) + PAGE_MARGIN;
+  const width = Math.max(0, ...page.nodes.map((node) => node.x + node.width)) + PAGE_MARGIN;
+  const height = Math.max(0, ...page.nodes.map((node) => node.y + node.height)) + PAGE_MARGIN;
   return [
     `  <diagram id="${escapeXml(page.id)}" name="${escapeXml(page.name)}">`,
     `    <mxGraphModel dx="0" dy="0" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${width}" pageHeight="${height}" math="0" shadow="0">`,
     "      <root>",
     '        <mxCell id="0" />',
     '        <mxCell id="1" parent="0" />',
-    ...page.groups.map(renderGroup),
     ...page.nodes.map(renderNode),
     ...page.edges.map(renderEdge),
     "      </root>",
@@ -132,7 +123,12 @@ function renderPage(page: DiagramPage): string[] {
   ];
 }
 
-export function renderDiagram(diagram: NavigationDiagram): string {
+/**
+ * 把 Main flow diagram 序列化成 draw.io 的 mxGraphModel XML（明文、不壓縮）。
+ * 一條主線一個 <diagram> 分頁，最後一個是總覽。同一份 diagram 兩次序列化字串完全相同——確定性、重跑幂等。
+ * 刻意不寫 draw.io 存檔時會補的 modified／etag／agent／version：那些帶時間戳，會破壞確定性。
+ */
+export function renderDiagram(diagram: MainFlowDiagram): string {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<mxfile host="f2w-diagram">',
@@ -143,7 +139,7 @@ export function renderDiagram(diagram: NavigationDiagram): string {
 }
 
 /**
- * 把 XML 寫成 output/<project>/workflow.drawio，回傳寫入路徑。缺目錄會自動建立。
+ * 把 XML 寫成 output/<project>/mainflow.drawio，回傳寫入路徑。缺目錄會自動建立。
  * 它是交付物、不是交接檔：重跑直接覆寫（版面手改請自行另存副本）。
  */
 export function saveDiagram(outputRoot: string, project: string, xml: string): string {
