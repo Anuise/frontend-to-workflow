@@ -6,7 +6,7 @@ import { type Mainflow, parseMainflow } from "../contracts/mainflow";
 import type { Workflow } from "../contracts/workflow";
 import { contractPath } from "../output";
 import { MissingPrerequisiteError } from "../prerequisites";
-import { type MainFlowDiagram, buildDiagram } from "./buildDiagram";
+import { type MainFlowDiagram, OVERVIEW_PAGE_NAME, buildDiagram } from "./buildDiagram";
 import { hasMainflow, loadMainflowForDiagram, loadWorkflowForDiagram } from "./inputs";
 import { renderDiagram, saveDiagram } from "./renderDiagram";
 
@@ -106,12 +106,19 @@ describe("renderDiagram", () => {
     expect(xml).toContain("</mxfile>");
   });
 
-  it("一條主線一個 <diagram> 分頁，沒有總覽頁", () => {
+  it("一條主線一個 <diagram> 分頁，最後一個是總覽", () => {
     const diagram = buildDiagram(workflow, mainflow);
     const xml = renderDiagram(diagram);
-    expect(countOf(xml, /<diagram /g)).toBe(2);
-    expect(countOf(xml, /<mxGraphModel /g)).toBe(2);
-    expect(xml).not.toContain("總覽");
+    expect(countOf(xml, /<diagram /g)).toBe(3);
+    expect(countOf(xml, /<mxGraphModel /g)).toBe(3);
+    expect(xml).toContain(`<diagram id="Diagram_Overview" name="${OVERVIEW_PAGE_NAME}">`);
+    // 總覽頁一頁就帶到全部主線的色系
+    expect(xml.split('<diagram id="Diagram_Overview"')[1]).toContain(
+      "fillColor=#dae8fc;strokeColor=#6c8ebf;",
+    );
+    expect(xml.split('<diagram id="Diagram_Overview"')[1]).toContain(
+      "fillColor=#d5e8d4;strokeColor=#82b366;",
+    );
   });
 
   it("不寫 draw.io 存檔才會補的時間戳屬性（確定性前提）", () => {
@@ -208,7 +215,10 @@ describe("端到端（真實 fixtures）", () => {
       loadWorkflowForDiagram(fixtures, "contracts"),
       loadMainflowForDiagram(fixtures, "contracts"),
     );
-    expect(diagram.pages.map((page) => page.name)).toEqual(["設定個人帳號"]);
+    expect(diagram.pages.map((page) => page.name)).toEqual([
+      "設定個人帳號",
+      OVERVIEW_PAGE_NAME,
+    ]);
     // /about 落選：不上圖，只在 warning 裡交代
     expect(diagram.warnings).toHaveLength(1);
     expect(diagram.warnings[0]).toContain("/about");

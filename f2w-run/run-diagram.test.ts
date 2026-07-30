@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
 import {
+  OVERVIEW_PAGE_NAME,
   buildDiagram,
   hasMainflow,
   loadMainflowForDiagram,
@@ -43,20 +44,25 @@ test("f2w-diagram 產出 mainflow.drawio（Main flow diagram）", { timeout: 180
   const mainflow = loadMainflowForDiagram(OUTPUT_ROOT, PROJECT);
   const diagram = buildDiagram(workflow, mainflow);
 
-  // 一條主線一個分頁，頁內每步一個框。
-  expect(diagram.pages).toHaveLength(mainflow.flows.length);
-  diagram.pages.forEach((page, index) => {
-    expect(page.nodes.filter((node) => node.kind === "step")).toHaveLength(
-      mainflow.flows[index]!.steps.length,
-    );
+  // 一條主線一個分頁，頁內每步一個框；最後一頁總覽收齊全部主線的步驟。
+  const stepsOf = (page: (typeof diagram.pages)[number]) =>
+    page.nodes.filter((node) => node.kind === "step");
+  expect(diagram.pages).toHaveLength(mainflow.flows.length + 1);
+  mainflow.flows.forEach((flow, index) => {
+    expect(stepsOf(diagram.pages[index]!)).toHaveLength(flow.steps.length);
   });
+  const overview = diagram.pages.at(-1)!;
+  expect(overview.name).toBe(OVERVIEW_PAGE_NAME);
+  expect(stepsOf(overview)).toHaveLength(
+    mainflow.flows.reduce((sum, flow) => sum + flow.steps.length, 0),
+  );
 
   const path = saveDiagram(OUTPUT_ROOT, PROJECT, renderDiagram(diagram));
   // eslint-disable-next-line no-console
-  console.log(`SAVED ${path} | flows=${diagram.pages.length}`);
+  console.log(`SAVED ${path} | flows=${mainflow.flows.length} pages=${diagram.pages.length}`);
   for (const page of diagram.pages) {
     // eslint-disable-next-line no-console
-    console.log(`  FLOW ${page.name} steps=${page.nodes.length - 2} edges=${page.edges.length}`);
+    console.log(`  PAGE ${page.name} steps=${stepsOf(page).length} edges=${page.edges.length}`);
   }
   for (const warning of diagram.warnings) {
     // eslint-disable-next-line no-console

@@ -30,14 +30,14 @@ _Avoid_: summary, caption, 說明（泛稱）
 
 **Overview（整體流程概述）**:
 跨所有 Page 的一段總覽敘述，說明整個前端的使用者流程樣貌；獨立於逐 Page 的 Workflow description。
-_Avoid_: intro, abstract
+_Avoid_: intro, abstract, 總覽頁（那是 Main flow diagram 的最後一個 draw.io 分頁，與這段敘述無關）
 
 **Workbook（工作流程 Excel）**:
 最終交付物 `workflow.xlsx`：含「概述」與「逐頁工作流程」兩個 sheet，逐頁列出 Workflow description 並嵌入截圖縮圖。
 _Avoid_: report, spreadsheet, 報表
 
 **Main flow diagram（主線流程圖）**:
-以業務 Step 為節點、步驟之間的業務轉場為有向邊的交付圖 `mainflow.drawio`；讀者是**業主**。由 `f2w-diagram` 從 Workflow description ＋ Main flow 組出（`buildDiagram(workflow, mainflow)`）：一條主線一個 draw.io 分頁、沒有總覽頁（第 1 頁就是第一條主線），節點是業務動作而不是 Page。圖上不標「推論·待確認」也不標 ⚠——要乾淨好懂，推論的表態留在 `mainflow.json` 與對話回報。不含業務決策條件、角色泳道與訊息事件。
+以業務 Step 為節點、步驟之間的業務轉場為有向邊的交付圖 `mainflow.drawio`；讀者是**業主**。由 `f2w-diagram` 從 Workflow description ＋ Main flow 組出（`buildDiagram(workflow, mainflow)`）：一條主線一個 draw.io 分頁（第 1 頁就是第一條主線），**最後一頁固定是總覽**（分頁名「總覽」＝`OVERVIEW_PAGE_NAME`）——把每條主線那一列照 `flows` 順序由上到下排在同一頁，內容與該主線自己那頁逐字相同、只換 y 座標，是簡報與列印用的全景，不是另一種圖。節點是業務動作而不是 Page。圖上不標「推論·待確認」也不標 ⚠——要乾淨好懂，推論的表態留在 `mainflow.json` 與對話回報。不含業務決策條件、角色泳道與訊息事件。
 _Avoid_: BPMN 圖, flowchart, 流程圖（泛稱）, 網站地圖, Navigation diagram（已被取代的舊語）
 
 **Main flow（主線）**:

@@ -11,7 +11,7 @@ import type { Workflow, WorkflowAction, WorkflowPage } from "../contracts/workfl
 /** Main flow diagram 上的圖元種類：主線標題、標題下的細橫線、業務步驟。 */
 export type DiagramNodeKind = "flowTitle" | "rule" | "step";
 
-/** 單一圖元：語意（id／種類／標題／小字／提示）＋座標與尺寸。 */
+/** 單一圖元：語意（id／種類／標題／小字／提示）＋色系＋座標與尺寸。 */
 export interface DiagramNode {
   id: string;
   kind: DiagramNodeKind;
@@ -21,6 +21,8 @@ export interface DiagramNode {
   label: string;
   /** 這一步收攏了哪些 Page；畫成 draw.io 的 tooltip，不佔版面。 */
   tooltip?: string;
+  /** 屬於第幾條主線，決定色系。掛在圖元而不是分頁——總覽頁一頁就有全部主線的色。 */
+  colorIndex: number;
   x: number;
   y: number;
   width: number;
@@ -35,16 +37,15 @@ export interface DiagramEdge {
   targetId: string;
 }
 
-/** draw.io 的一個分頁＝一條主線。colorIndex 決定這頁步驟框的色系。 */
+/** draw.io 的一個分頁：每條主線各一頁，最後再一頁把全部主線由上到下排在一起的總覽。 */
 export interface DiagramPage {
   id: string;
   name: string;
-  colorIndex: number;
   nodes: DiagramNode[];
   edges: DiagramEdge[];
 }
 
-/** 組好的 Main flow diagram：一條主線一頁，以及要回報給使用者（不是業主）的提醒。 */
+/** 組好的 Main flow diagram：一條主線一頁＋最後一頁總覽，以及要回報給使用者（不是業主）的提醒。 */
 export interface MainFlowDiagram {
   name: string;
   pages: DiagramPage[];
@@ -63,6 +64,9 @@ export class DiagramConsistencyError extends Error {
 /** tooltip 裡「這一步收攏了哪些頁」那一段的抬頭。 */
 export const COVERED_TOOLTIP_HEADER = "此步驟涵蓋的頁面：";
 
+/** 最後一頁的分頁名：全部主線由上到下排在一起，一頁看完整個平台。 */
+export const OVERVIEW_PAGE_NAME = "總覽";
+
 // 版面（像素）。一條主線＝單列橫排、不折行；240×100 才放得下「粗體標題＋小字說明」兩段。
 const STEP_WIDTH = 240;
 const STEP_HEIGHT = 100;
@@ -73,6 +77,8 @@ const TITLE_HEIGHT = 40;
 const RULE_HEIGHT = 2;
 const RULE_Y = TITLE_Y + TITLE_HEIGHT + 12;
 const STEP_Y = RULE_Y + RULE_HEIGHT + 36;
+/** 總覽頁上下相鄰兩條主線的縱向間距：一條主線的內容高 ＋ 主線之間的留白。 */
+const ROW_SPACING = STEP_Y + STEP_HEIGHT + 80;
 
 /** 把 Page 識別轉成可讀標籤（含 tab）。 */
 function pageLabel(id: PageId): string {
@@ -174,26 +180,36 @@ function coveredTooltip(pages: readonly PageId[]): string {
   return [COVERED_TOOLTIP_HEADER, ...pages.map((page) => `• ${pageLabel(page)}`)].join("\n");
 }
 
-/** 一條主線一個分頁：標題 ＋ 細橫線 ＋ 單列橫排的步驟與推進邊。 */
-function buildFlowPage(flow: MainflowFlow, flowIndex: number): DiagramPage {
+/**
+ * 一條主線的一列：標題 ＋ 細橫線 ＋ 單列橫排的步驟與推進邊。
+ * 主線自己那頁用 yOffset 0，總覽頁按主線順序往下堆；idPrefix 讓同一條主線在兩頁各有一組 id。
+ */
+function buildFlowRow(
+  flow: MainflowFlow,
+  flowIndex: number,
+  idPrefix: string,
+  yOffset: number,
+): Pick<DiagramPage, "nodes" | "edges"> {
   const rowWidth = (flow.steps.length - 1) * COLUMN_SPACING + STEP_WIDTH;
-  const stepId = (index: number) => `Step_${flowIndex + 1}_${index + 1}`;
+  const stepId = (index: number) => `${idPrefix}Step_${flowIndex + 1}_${index + 1}`;
   const nodes: DiagramNode[] = [
     {
-      id: `Title_${flowIndex + 1}`,
+      id: `${idPrefix}Title_${flowIndex + 1}`,
       kind: "flowTitle",
       label: flow.name,
+      colorIndex: flowIndex,
       x: ORIGIN_X,
-      y: TITLE_Y,
+      y: yOffset + TITLE_Y,
       width: rowWidth,
       height: TITLE_HEIGHT,
     },
     {
-      id: `Rule_${flowIndex + 1}`,
+      id: `${idPrefix}Rule_${flowIndex + 1}`,
       kind: "rule",
       label: "",
+      colorIndex: flowIndex,
       x: ORIGIN_X,
-      y: RULE_Y,
+      y: yOffset + RULE_Y,
       width: rowWidth,
       height: RULE_HEIGHT,
     },
@@ -207,14 +223,15 @@ function buildFlowPage(flow: MainflowFlow, flowIndex: number): DiagramPage {
       title: `${index + 1}. ${step.title}`,
       label: step.note,
       tooltip: coveredTooltip(step.pages),
+      colorIndex: flowIndex,
       x: ORIGIN_X + index * COLUMN_SPACING,
-      y: STEP_Y,
+      y: yOffset + STEP_Y,
       width: STEP_WIDTH,
       height: STEP_HEIGHT,
     });
     if (step.edgeLabel !== undefined) {
       edges.push({
-        id: `Edge_${flowIndex + 1}_${index + 1}`,
+        id: `${idPrefix}Edge_${flowIndex + 1}_${index + 1}`,
         label: step.edgeLabel,
         sourceId: stepId(index),
         targetId: stepId(index + 1),
@@ -222,13 +239,36 @@ function buildFlowPage(flow: MainflowFlow, flowIndex: number): DiagramPage {
     }
   });
 
-  return { id: `Diagram_${flowIndex + 1}`, name: flow.name, colorIndex: flowIndex, nodes, edges };
+  return { nodes, edges };
+}
+
+/** 一條主線一個分頁，分頁名照抄主線名。 */
+function buildFlowPage(flow: MainflowFlow, flowIndex: number): DiagramPage {
+  return {
+    id: `Diagram_${flowIndex + 1}`,
+    name: flow.name,
+    ...buildFlowRow(flow, flowIndex, "", 0),
+  };
+}
+
+/** 最後一頁：把每條主線那一列**照 flows 順序由上到下**排在同一頁，一頁看完整個平台。 */
+function buildOverviewPage(flows: readonly MainflowFlow[]): DiagramPage {
+  const rows = flows.map((flow, index) =>
+    buildFlowRow(flow, index, "Overview_", index * ROW_SPACING),
+  );
+  return {
+    id: "Diagram_Overview",
+    name: OVERVIEW_PAGE_NAME,
+    nodes: rows.flatMap((row) => row.nodes),
+    edges: rows.flatMap((row) => row.edges),
+  };
 }
 
 /**
  * 由 Workflow description ＋ Main flow 組出 Main flow diagram（確定性核心，不碰 fs）。
  *
- * 一條主線一個分頁、沒有總覽頁；一步可收攏多個 Page（收攏的頁只進 tooltip）。
+ * 一條主線一個分頁，最後再一頁「總覽」把全部主線由上到下排在一起（主線只有一條時仍照出——
+ * 分頁位置固定好過視情況消失）；一步可收攏多個 Page（收攏的頁只進 tooltip）。
  * 推論在上游的 mainflow.json，這裡只做版面與四道一致性硬驗。
  */
 export function buildDiagram(workflow: Workflow, mainflow: Mainflow): MainFlowDiagram {
@@ -239,7 +279,7 @@ export function buildDiagram(workflow: Workflow, mainflow: Mainflow): MainFlowDi
 
   return {
     name: workflow.project,
-    pages: mainflow.flows.map(buildFlowPage),
+    pages: [...mainflow.flows.map(buildFlowPage), buildOverviewPage(mainflow.flows)],
     warnings:
       mainflow.excludedPages.length > 0 ? [excludedPagesWarning(mainflow.excludedPages)] : [],
   };

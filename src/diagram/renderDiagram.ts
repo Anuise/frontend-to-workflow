@@ -4,7 +4,7 @@ import { contractPath } from "../output";
 import type { DiagramEdge, DiagramNode, DiagramPage, MainFlowDiagram } from "./buildDiagram";
 
 /**
- * 每條主線一個色系（依分頁順序取，超過就循環）。
+ * 每條主線一個色系（依主線順序取，超過就循環）。
  * 用 draw.io 的標準配色，印黑白時淡底仍分得出深淺。
  */
 const FLOW_PALETTE = [
@@ -72,15 +72,15 @@ function nodeValue(node: DiagramNode): string {
   return escapeXml(`<b>${node.title}</b><br><font style="font-size:10px">${node.label}</font>`);
 }
 
-function styleOf(node: DiagramNode, colorIndex: number): string {
-  if (node.kind === "flowTitle") return flowTitleStyle(colorIndex);
-  if (node.kind === "rule") return ruleStyle(colorIndex);
-  return stepStyle(colorIndex);
+function styleOf(node: DiagramNode): string {
+  if (node.kind === "flowTitle") return flowTitleStyle(node.colorIndex);
+  if (node.kind === "rule") return ruleStyle(node.colorIndex);
+  return stepStyle(node.colorIndex);
 }
 
-function renderNode(node: DiagramNode, colorIndex: number): string {
+function renderNode(node: DiagramNode): string {
   const geometry = `<mxGeometry x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" as="geometry" />`;
-  const style = styleOf(node, colorIndex);
+  const style = styleOf(node);
   if (!node.tooltip) {
     return [
       `        <mxCell id="${node.id}" value="${nodeValue(node)}" style="${style}" vertex="1" parent="1">`,
@@ -115,7 +115,7 @@ function renderPage(page: DiagramPage): string[] {
     "      <root>",
     '        <mxCell id="0" />',
     '        <mxCell id="1" parent="0" />',
-    ...page.nodes.map((node) => renderNode(node, page.colorIndex)),
+    ...page.nodes.map(renderNode),
     ...page.edges.map(renderEdge),
     "      </root>",
     "    </mxGraphModel>",
@@ -125,7 +125,7 @@ function renderPage(page: DiagramPage): string[] {
 
 /**
  * 把 Main flow diagram 序列化成 draw.io 的 mxGraphModel XML（明文、不壓縮）。
- * 一條主線一個 <diagram> 分頁。同一份 diagram 兩次序列化字串完全相同——確定性、重跑幂等。
+ * 一條主線一個 <diagram> 分頁，最後一個是總覽。同一份 diagram 兩次序列化字串完全相同——確定性、重跑幂等。
  * 刻意不寫 draw.io 存檔時會補的 modified／etag／agent／version：那些帶時間戳，會破壞確定性。
  */
 export function renderDiagram(diagram: MainFlowDiagram): string {

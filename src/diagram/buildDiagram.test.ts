@@ -5,6 +5,7 @@ import {
   COVERED_TOOLTIP_HEADER,
   DiagramConsistencyError,
   type MainFlowDiagram,
+  OVERVIEW_PAGE_NAME,
   buildDiagram,
   excludedPagesWarning,
 } from "./buildDiagram";
@@ -123,11 +124,33 @@ function pageNamed(diagram: MainFlowDiagram, name: string) {
 }
 
 describe("buildDiagram 分頁結構", () => {
-  it("一條主線一個分頁，沒有總覽頁", () => {
+  it("一條主線一個分頁，最後一頁是總覽", () => {
     const diagram = buildDiagram(workflow, mainflow);
-    expect(diagram.pages.map((page) => page.name)).toEqual(["處理訂單", "設定帳號"]);
-    expect(diagram.pages.map((page) => page.colorIndex)).toEqual([0, 1]);
+    expect(diagram.pages.map((page) => page.name)).toEqual([
+      "處理訂單",
+      "設定帳號",
+      OVERVIEW_PAGE_NAME,
+    ]);
+    // 色系掛在圖元：主線自己那頁整頁同色
+    expect(
+      diagram.pages.slice(0, 2).map((page) => new Set(page.nodes.map((node) => node.colorIndex))),
+    ).toEqual([new Set([0]), new Set([1])]);
     expect(diagram.name).toBe("demo");
+  });
+
+  it("總覽頁把每條主線依序由上到下排一列，各自沿用自己的色系", () => {
+    const overview = pageNamed(buildDiagram(workflow, mainflow), OVERVIEW_PAGE_NAME);
+    const titles = overview.nodes.filter((node) => node.kind === "flowTitle");
+    expect(titles.map((node) => node.label)).toEqual(["處理訂單", "設定帳號"]);
+    expect(titles.map((node) => node.colorIndex)).toEqual([0, 1]);
+    // 由上到下：第 2 條主線的標題落在第 1 條所有圖元的下方
+    const firstRowBottom = Math.max(
+      ...overview.nodes.filter((node) => node.colorIndex === 0).map((node) => node.y + node.height),
+    );
+    expect(titles[1]!.y).toBeGreaterThan(firstRowBottom);
+    // 內容與兩條主線自己那頁加起來一樣多
+    expect(overview.nodes.filter((node) => node.kind === "step")).toHaveLength(6);
+    expect(overview.edges).toHaveLength(4);
   });
 
   it("每頁＝主線標題 ＋ 細橫線 ＋ 每步一個框", () => {
