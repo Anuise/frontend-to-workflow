@@ -1,8 +1,9 @@
 # f2w-revise T5：跨重跑存活驗收
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-30
+Closed: 2026-07-30
 Author: weisshung
 Parent: ../spec.md
 
@@ -36,13 +37,13 @@ Parent: ../spec.md
 
 ## Acceptance criteria
 
-- [ ] 端到端測試：同一批修訂套在兩份不同上游產出上（其中一份多一頁），錨得住的修訂在兩份上結果相同
-- [ ] 同一測試斷言新增的那頁拿到 AI 的新描述、不受修訂影響
-- [ ] 拿 `new_0724_AI六大模組管理平台_桃園智發會_最新版` 實跑：提修訂、重跑 `f2w-describe`，校正回到 `workflow.json`
-- [ ] 同一專案實跑：提修訂、重跑 `f2w-breakdown`，校正回到 `workitems.json`
-- [ ] 數出後端修訂變孤兒的比例並記錄在 spec 的 Further Notes（數字本身不設門檻，超標的處置是另一張票）
-- [ ] 總說明 skill 加上 `f2w-revise` 這個可選插入步
-- [ ] `.claude` 與 `.agents` 兩份總說明鏡像內容一致
+- [x] 端到端測試：同一批修訂套在兩份不同上游產出上（其中一份多一頁），錨得住的修訂在兩份上結果相同
+- [x] 同一測試斷言新增的那頁拿到 AI 的新描述、不受修訂影響
+- [x] 拿 `new_0724_AI六大模組管理平台_桃園智發會_最新版` 實跑：提修訂、重跑 `f2w-describe`，校正回到 `workflow.json`
+- [x] 同一專案實跑：提修訂、重跑 `f2w-breakdown`，校正回到 `workitems.json`
+- [x] 數出後端修訂變孤兒的比例並記錄在 spec 的 Further Notes（數字本身不設門檻，超標的處置是另一張票）
+- [x] 總說明 skill 加上 `f2w-revise` 這個可選插入步
+- [x] `.claude` 與 `.agents` 兩份總說明鏡像內容一致
 
 ## Blocked by
 

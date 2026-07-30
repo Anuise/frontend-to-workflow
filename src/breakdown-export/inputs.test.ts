@@ -10,7 +10,7 @@ const SOURCED = {
   project: "demo",
   frontend: [
     {
-      id: "FE-1",
+      id: "FE-01-01",
       sourcePage: { route: "/login" },
       title: "登入表單",
       scope: "帳號密碼欄位與送出。",
@@ -27,7 +27,7 @@ const SOURCED = {
       title: "登入 API",
       scope: "驗證帳密並發工作階段。",
       acceptance: "帳密正確回 200 與 token。",
-      dependsOn: ["FE-1"],
+      dependsOn: ["FE-01-01"],
       risk: "",
       inferred: true,
       assignedParty: "sample-vendor",

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { type PageDescription, buildWorkflow, loadCapturedPages, saveWorkflow } from "../src/describe";
+import { loadProjectRevisions } from "../src/revise";
 
 const OUTPUT_ROOT = "output";
+const WORKSPACE_ROOT = "workspace";
 const PROJECT = "0729_AI六大模組管理平台_5E_AI平台最新版";
 
 /** Page 識別捷徑：整站路由恆為 "/"，只用 tab 區分狀態。 */
@@ -556,7 +558,10 @@ describe("f2w-describe", () => {
     const pages = loadCapturedPages(OUTPUT_ROOT, PROJECT);
     expect(DESCRIPTIONS).toHaveLength(pages.pages.length);
 
-    const workflow = buildWorkflow(pages, OVERVIEW, DESCRIPTIONS);
+    // 存檔前套上人工修訂（缺修訂檔時是空陣列）；孤兒修訂只發 warning、不中止。
+    const revisions = loadProjectRevisions(WORKSPACE_ROOT, PROJECT);
+    const { workflow, warnings } = buildWorkflow(pages, OVERVIEW, DESCRIPTIONS, revisions);
+    for (const w of warnings) console.warn(w);
     expect(workflow.pages).toHaveLength(pages.pages.length);
 
     saveWorkflow(OUTPUT_ROOT, PROJECT, workflow);

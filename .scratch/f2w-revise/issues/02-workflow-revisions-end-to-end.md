@@ -1,8 +1,9 @@
 # f2w-revise T2：workflow 修訂——一句話落檔，重跑 f2w-describe 校正自動回來
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-30
+Closed: 2026-07-30
 Author: weisshung
 Parent: ../spec.md
 
@@ -68,24 +69,24 @@ target 由使用者講明，**不由 AI 從話裡判斷**——判錯的後果�
 
 ## Acceptance criteria
 
-- [ ] `f2w-revise workflow <修改需求>` 把使用者的話轉成 Revision，append 進 `workspace/revisions/<project>/revisions.json`（**不做事先確認，直接落檔**）
-- [ ] 落檔後列出這次寫進去的每一筆全文：錨、欄位、新值、reason
-- [ ] 缺 `workflow.json` 時丟 `MissingPrerequisiteError`，提示先跑 `f2w-describe`，中止
-- [ ] 重跑 `f2w-describe`，被 `set` 過的 `purpose`／`content`／`actions`／`overview` 回到 `workflow.json`
-- [ ] 同一次重跑，**沒有被錨到的新頁拿得到 AI 的新描述**（保住校正與吃到新資訊兩件事同時成立）
-- [ ] 同一作用點多筆時取最後一筆；同一組修訂以不同順序給入（同作用點相對順序不變）結果相同
-- [ ] `set` 覆蓋純量欄位與覆蓋整組 `actions` 陣列都可行
-- [ ] 空修訂集時回傳的物件與輸入相同
-- [ ] 孤兒修訂保留該筆、發 warning、其餘照套
-- [ ] `workflow` 搭 `upsert`／`remove` 在契約層被擋下
-- [ ] `value` 型別依 `field` 分派：`purpose` 給陣列被擋下、`actions` 給字串被擋下，**訊息指名修訂檔而非 `workflow.json`**
-- [ ] `at` 缺席時通過；修訂檔缺席時 load 回空陣列而非丟錯
-- [ ] 套用邏輯是不依賴檔案系統的純函式，回 `{ result, warnings }`；摺疊是內部細節、不對外露出
-- [ ] `CONTEXT.md` 加 **Revision（修訂）** 與 **Effective revision set（有效修訂集）** 兩詞，並補上「`workspace/` 與 `output/` 依內容的作者分」這條分界原則（要能回答「那 `mainflow.json` 為什麼在 `output/`」——因為它的內容作者是 AI）
-- [ ] ADR-0011：Revision 落在 `workspace/` 而非 `output/`
-- [ ] ADR-0012：宣告式 override、由上游套用。記下被否決的敘述式提議（重播不確定、無法斷言）與指令式 patch（序列相依）、被否決的「由 `f2w-revise` 就地套」與「兩邊都做」、欄位凍結語意、「直接落檔不做事先確認」如何偏離本 repo 的 checkpoint 慣例及其理由、以及「乾跑與上游實際套用必須共用同一份實作」這條約束
-- [ ] 新增 `f2w-revise` 的 SKILL.md（workflow 部分）
-- [ ] 改寫 `f2w-describe` 的 SKILL.md：多一個前置輸入、存檔前套用、欄位凍結語意、描述前先讀修訂當提示，以及「同一份 `pages.json` 配不同修訂檔會產出不同 `workflow.json`」這件事（形式上仍確定性，但削弱了「重跑必然重現」的直覺）
+- [x] `f2w-revise workflow <修改需求>` 把使用者的話轉成 Revision，append 進 `workspace/revisions/<project>/revisions.json`（**不做事先確認，直接落檔**）
+- [x] 落檔後列出這次寫進去的每一筆全文：錨、欄位、新值、reason
+- [x] 缺 `workflow.json` 時丟 `MissingPrerequisiteError`，提示先跑 `f2w-describe`，中止
+- [x] 重跑 `f2w-describe`，被 `set` 過的 `purpose`／`content`／`actions`／`overview` 回到 `workflow.json`
+- [x] 同一次重跑，**沒有被錨到的新頁拿得到 AI 的新描述**（保住校正與吃到新資訊兩件事同時成立）
+- [x] 同一作用點多筆時取最後一筆；同一組修訂以不同順序給入（同作用點相對順序不變）結果相同
+- [x] `set` 覆蓋純量欄位與覆蓋整組 `actions` 陣列都可行
+- [x] 空修訂集時回傳的物件與輸入相同
+- [x] 孤兒修訂保留該筆、發 warning、其餘照套
+- [x] `workflow` 搭 `upsert`／`remove` 在契約層被擋下
+- [x] `value` 型別依 `field` 分派：`purpose` 給陣列被擋下、`actions` 給字串被擋下，**訊息指名修訂檔而非 `workflow.json`**
+- [x] `at` 缺席時通過；修訂檔缺席時 load 回空陣列而非丟錯
+- [x] 套用邏輯是不依賴檔案系統的純函式，回 `{ result, warnings }`；摺疊是內部細節、不對外露出
+- [x] `CONTEXT.md` 加 **Revision（修訂）** 與 **Effective revision set（有效修訂集）** 兩詞，並補上「`workspace/` 與 `output/` 依內容的作者分」這條分界原則（要能回答「那 `mainflow.json` 為什麼在 `output/`」——因為它的內容作者是 AI）
+- [x] ADR-0011：Revision 落在 `workspace/` 而非 `output/`
+- [x] ADR-0012：宣告式 override、由上游套用。記下被否決的敘述式提議（重播不確定、無法斷言）與指令式 patch（序列相依）、被否決的「由 `f2w-revise` 就地套」與「兩邊都做」、欄位凍結語意、「直接落檔不做事先確認」如何偏離本 repo 的 checkpoint 慣例及其理由、以及「乾跑與上游實際套用必須共用同一份實作」這條約束
+- [x] 新增 `f2w-revise` 的 SKILL.md（workflow 部分）
+- [x] 改寫 `f2w-describe` 的 SKILL.md：多一個前置輸入、存檔前套用、欄位凍結語意、描述前先讀修訂當提示，以及「同一份 `pages.json` 配不同修訂檔會產出不同 `workflow.json`」這件事（形式上仍確定性，但削弱了「重跑必然重現」的直覺）
 
 ## Blocked by
 

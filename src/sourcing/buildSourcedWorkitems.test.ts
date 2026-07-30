@@ -18,7 +18,7 @@ const workitems: Workitems = parseWorkitems({
   project: "demo",
   frontend: [
     {
-      id: "FE-1",
+      id: "FE-01-01",
       sourcePage: { route: "/" },
       title: "模型清單頁",
       scope: "列出模型。",

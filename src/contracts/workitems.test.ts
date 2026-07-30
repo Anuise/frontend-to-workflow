@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { ContractValidationError } from "./validate";
-import { parseWorkitems } from "./workitems";
+import { frontendWorkitemId, parseWorkitems } from "./workitems";
 
 /** 一份合法的 workitems：兩筆前端（各對應一頁）、一筆後端（推論）。 */
 const validWorkitems = {
   project: "sample-frontend",
   frontend: [
     {
-      id: "FE-1",
+      id: "FE-01-01",
       sourcePage: { route: "/" },
       title: "首頁進入點",
       scope: "渲染歡迎訊息與導覽連結。",
@@ -17,12 +17,12 @@ const validWorkitems = {
       inferred: false,
     },
     {
-      id: "FE-2",
+      id: "FE-02-01",
       sourcePage: { route: "/settings", tab: "個人資料" },
       title: "個人資料表單",
       scope: "顯示並編輯姓名與 Email。",
       acceptance: "輸入合法值後可提交。",
-      dependsOn: ["FE-1"],
+      dependsOn: ["FE-01-01"],
       risk: "欄位驗證規則待確認。",
       inferred: false,
     },
@@ -34,7 +34,7 @@ const validWorkitems = {
       title: "個人資料儲存 API",
       scope: "接收並持久化個人資料。",
       acceptance: "提交後資料落地並可讀回。",
-      dependsOn: ["FE-2"],
+      dependsOn: ["FE-02-01"],
       risk: "",
       inferred: true,
     },
@@ -67,7 +67,7 @@ describe("parseWorkitems", () => {
   it("契約：id 跨 frontend＋backend 重複時丟 ContractValidationError", () => {
     const bad = {
       ...validWorkitems,
-      backend: [{ ...validWorkitems.backend[0], id: "FE-1" }],
+      backend: [{ ...validWorkitems.backend[0], id: "FE-01-01" }],
     };
     expect(() => parseWorkitems(bad)).toThrow(ContractValidationError);
   });
@@ -80,11 +80,41 @@ describe("parseWorkitems", () => {
     expect(() => parseWorkitems(bad)).toThrow(ContractValidationError);
   });
 
+  it("契約：前端 id 不合 FE-<頁序>-<該頁工項序> 時丟錯，且訊息指名該筆 id", () => {
+    for (const badId of ["FE-1", "FE-P01-A1", "fe-01-01", "FE-01", "BE-01-01"]) {
+      const bad = {
+        ...validWorkitems,
+        frontend: [{ ...validWorkitems.frontend[0], id: badId }, validWorkitems.frontend[1]],
+      };
+      expect(() => parseWorkitems(bad)).toThrow(ContractValidationError);
+      expect(() => parseWorkitems(bad)).toThrow(new RegExp(badId));
+    }
+  });
+
+  it("契約：後端 id 不受前端格式約束（自訂 id 照樣通過）", () => {
+    const w = parseWorkitems({
+      ...validWorkitems,
+      backend: [{ ...validWorkitems.backend[0], id: "BE-EXTRA-01" }],
+    });
+    expect(w.backend[0]?.id).toBe("BE-EXTRA-01");
+  });
+
   it("契約：後端 inferred 為 false 時丟 ContractValidationError", () => {
     const bad = {
       ...validWorkitems,
       backend: [{ ...validWorkitems.backend[0], inferred: false }],
     };
     expect(() => parseWorkitems(bad)).toThrow(ContractValidationError);
+  });
+});
+
+describe("frontendWorkitemId", () => {
+  it("由 0-based 索引推導出補零兩位、從 01 起的 id", () => {
+    expect(frontendWorkitemId(0, 0)).toBe("FE-01-01");
+    expect(frontendWorkitemId(9, 11)).toBe("FE-10-12");
+  });
+
+  it("超過兩位數的頁序不截斷", () => {
+    expect(frontendWorkitemId(99, 0)).toBe("FE-100-01");
   });
 });

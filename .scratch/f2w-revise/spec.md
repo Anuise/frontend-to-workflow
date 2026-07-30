@@ -1,8 +1,9 @@
 # f2w-revise：讓人工修訂跨重跑存活
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-30
+Closed: 2026-07-30
 Author: weisshung
 
 ## Problem Statement
@@ -295,12 +296,18 @@ Revision 是欄位級的最終值，不是變更指令，也不是自然語言�
 
 **決策來源**：本 spec 由一次 `/grill-with-docs` 逐題確認產生。過程中「誰執行套用」被使用者重開一次，從「`f2w-revise` 就地套」改為「上游套」；前端 id 的穩定性問題是在那次重開之後才浮現的。被否決的選項與理由記在 ADR-0011 至 0013。
 
+**實測的後端修訂孤兒比例（T5 量出來的數字）**：在 `new_0724_AI六大模組管理平台_桃園智發會_最新版`（41 頁、257 action、58 筆後端工項）上提了 6 筆錨在 AI 生成後端 id 的 `set` 修訂，重跑 `f2w-breakdown` 之後**孤兒 0 筆（0%）**，6 筆全部套上。但這個數字是**下限、不是結論**：該專案的後端工項清單寫在驅動裡、id 是手寫常數，重跑必然一致；真正的漂移來自 AI 重新推論後端清單那一刻，本次沒有重新推論。要驗那個情境得讓 AI 重拆一次後端，是另一次實跑。同一批修訂裡的自訂 id `upsert`（`BE-EXTRA-01`）與兩筆前端 `set`（`FE-01-01`／`FE-01-02`）也都在重跑後回到 `workitems.json`。
+
+**前端 id 的確定性已實測**：同一專案連跑兩次 `f2w-breakdown`，257 筆前端 id 逐字相同（SHA-1 `c7370a0c`）。
+
+**T5 找到一個 spec 沒預期到的行為，比「變孤兒」更難察覺**：`workflow.json` 新增的頁若**插在既有頁中間**，工項 id 整批位移，原本錨在 `FE-02-01` 的修訂**不會變孤兒**——它會套到位移後占用該 id 的另一筆工項身上，而且**不發 warning**（那個 id 確實存在），乾跑也看不出來。根因是 anchor 只有 id、沒有頁身分可交叉核對。已記進 ADR-0013 並有測試蓋住（`src/revise/crossRerunSurvival.test.ts`），要根治得在 anchor 上補 `sourcePage` 或改用內容雜湊——那是另一張票。
+
 ## Implementation issues
 
-- [`issues/01-frontend-workitem-id-deterministic.md`](issues/01-frontend-workitem-id-deterministic.md) — f2w-revise T1：前端工項 id 升格為確定性推導（prefactor） (open)
-- [`issues/02-workflow-revisions-end-to-end.md`](issues/02-workflow-revisions-end-to-end.md) — f2w-revise T2：workflow 修訂——一句話落檔，重跑 f2w-describe 校正自動回來 (open)
-- [`issues/03-workitems-revisions-end-to-end.md`](issues/03-workitems-revisions-end-to-end.md) — f2w-revise T3：workitems 修訂——set／upsert／remove，重跑 f2w-breakdown 套回 (open)
-- [`issues/04-dry-run-validation.md`](issues/04-dry-run-validation.md) — f2w-revise T4：乾跑驗證 (open)
-- [`issues/05-cross-rerun-survival-acceptance.md`](issues/05-cross-rerun-survival-acceptance.md) — f2w-revise T5：跨重跑存活驗收 (open)
+- [`issues/01-frontend-workitem-id-deterministic.md`](issues/01-frontend-workitem-id-deterministic.md) — f2w-revise T1：前端工項 id 升格為確定性推導（prefactor） (closed)
+- [`issues/02-workflow-revisions-end-to-end.md`](issues/02-workflow-revisions-end-to-end.md) — f2w-revise T2：workflow 修訂——一句話落檔，重跑 f2w-describe 校正自動回來 (closed)
+- [`issues/03-workitems-revisions-end-to-end.md`](issues/03-workitems-revisions-end-to-end.md) — f2w-revise T3：workitems 修訂——set／upsert／remove，重跑 f2w-breakdown 套回 (closed)
+- [`issues/04-dry-run-validation.md`](issues/04-dry-run-validation.md) — f2w-revise T4：乾跑驗證 (closed)
+- [`issues/05-cross-rerun-survival-acceptance.md`](issues/05-cross-rerun-survival-acceptance.md) — f2w-revise T5：跨重跑存活驗收 (closed)
 
 依賴：01 與 02 無 blocker、可並行；03 卡 01＋02；04 卡 02＋03；05 卡 03＋04。
