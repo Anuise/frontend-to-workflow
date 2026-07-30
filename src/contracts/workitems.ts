@@ -20,6 +20,24 @@ export const workItemSchema = z.object({
   inferred: z.boolean(),
 });
 
+/**
+ * 前端工項 id 的確定性格式：`FE-<頁序>-<該頁工項序>`，兩段皆從 1 起、補零兩位。
+ * 兩個序號取自 workflow.json 的陣列索引，所以 workflow 沒變、id 必定相同——
+ * 錨在 id 上的 Revision 才撐得過一次 f2w-breakdown 重跑。
+ * 後端工項刻意不受此格式約束（見 ADR-0013）：後端筆數由 AI 推論決定，無法確定性化。
+ */
+export const FRONTEND_WORKITEM_ID_PATTERN = /^FE-\d{2,}-\d{2,}$/;
+
+/** 由 workflow.json 的陣列索引（皆 0-based）推導前端工項 id。 */
+export function frontendWorkitemId(pageIndex: number, itemIndex: number): string {
+  const seq = (n: number) => String(n + 1).padStart(2, "0");
+  return `FE-${seq(pageIndex)}-${seq(itemIndex)}`;
+}
+
+/** 契約層共用訊息：前端工項 id 必須是確定性格式。 */
+export const FRONTEND_WORKITEM_ID_MESSAGE =
+  "前端工項 id 必須為 FE-<頁序>-<該頁工項序>（兩段皆補零兩位、取自 workflow.json 的陣列索引）";
+
 /** 契約層共用訊息：工項 id 必須全域唯一。 */
 export const UNIQUE_WORKITEM_IDS_MESSAGE = "工項 id 必須全域唯一（跨 frontend 與 backend）";
 /** 契約層共用訊息：前端工項一律非推論。 */
@@ -52,6 +70,17 @@ export const workitemsSchema = z
   .refine((v) => v.backend.every((i) => i.inferred === true), {
     message: BACKEND_INFERRED_MESSAGE,
     path: ["backend"],
+  })
+  .superRefine((v, ctx) => {
+    // 逐筆加 issue（而非單一 refine）：訊息要指名是哪一筆 id 不合格式。
+    v.frontend.forEach((item, i) => {
+      if (FRONTEND_WORKITEM_ID_PATTERN.test(item.id)) return;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["frontend", i, "id"],
+        message: `${FRONTEND_WORKITEM_ID_MESSAGE}；不合格式：${item.id}`,
+      });
+    });
   });
 
 export type WorkItem = z.infer<typeof workItemSchema>;

@@ -1,8 +1,9 @@
 # f2w-revise T1：前端工項 id 升格為確定性推導
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-30
+Closed: 2026-07-30
 Author: weisshung
 Parent: ../spec.md
 
@@ -20,13 +21,13 @@ Parent: ../spec.md
 
 ## Acceptance criteria
 
-- [ ] 工項契約新增 refine：前端工項 id 必須符合 `FE-<頁序>-<該頁操作序>`，不合格式被擋下且錯誤訊息指名該筆 id
-- [ ] 後端工項 id 不受此格式約束（測試直接蓋到，避免未來有人順手加上去）
-- [ ] `buildWorkitems` 產出的前端 id 由 `workflow.json` 的陣列索引推導，不由 AI 自由發揮
-- [ ] 既有的五重把關全部照舊通過，包含每個 Page 前端工項數 ≥ `max(1, 該頁 actions 數)` 這條硬底線
-- [ ] 拿 `new_0724_AI六大模組管理平台_桃園智發會_最新版` 重跑兩次 `f2w-breakdown`，兩次的前端 id 集合完全相同
-- [ ] `f2w-breakdown` 的 SKILL.md 寫明前端 id 的確定性格式要求
-- [ ] ADR-0013 記下：為何強制格式（修訂錨定必須撐過重拆）、後端為何做不到、殘餘風險是什麼
+- [x] 工項契約新增 refine：前端工項 id 必須符合 `FE-<頁序>-<該頁操作序>`，不合格式被擋下且錯誤訊息指名該筆 id
+- [x] 後端工項 id 不受此格式約束（測試直接蓋到，避免未來有人順手加上去）
+- [x] `buildWorkitems` 產出的前端 id 由 `workflow.json` 的陣列索引推導，不由 AI 自由發揮
+- [x] 既有的五重把關全部照舊通過，包含每個 Page 前端工項數 ≥ `max(1, 該頁 actions 數)` 這條硬底線
+- [x] 拿 `new_0724_AI六大模組管理平台_桃園智發會_最新版` 重跑兩次 `f2w-breakdown`，兩次的前端 id 集合完全相同
+- [x] `f2w-breakdown` 的 SKILL.md 寫明前端 id 的確定性格式要求
+- [x] ADR-0013 記下：為何強制格式（修訂錨定必須撐過重拆）、後端為何做不到、殘餘風險是什麼
 
 ## Blocked by
 

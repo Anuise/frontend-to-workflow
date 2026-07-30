@@ -2,8 +2,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { type PageId, pageIdKey } from "../contracts/page";
 import type { Pages } from "../contracts/pages";
+import type { Revision } from "../contracts/revisions";
 import { type Workflow, type WorkflowAction, parseWorkflow } from "../contracts/workflow";
 import { contractPath } from "../output";
+import { applyWorkflowRevisions } from "../revise/applyRevisions";
 
 /**
  * 逐 Page 的使用者視角描述：頁面用途、主要內容、可執行操作（含操作去向）。
@@ -15,6 +17,12 @@ export interface PageDescription {
   purpose: string;
   content: string;
   actions: WorkflowAction[];
+}
+
+/** buildWorkflow 的產出：驗過的 workflow，加上套用修訂時要交代的 warning（孤兒修訂）。 */
+export interface WorkflowBuild {
+  workflow: Workflow;
+  warnings: string[];
 }
 
 /**
@@ -35,17 +43,36 @@ function label(id: PageId): string {
 }
 
 /**
+ * 去向把關：每個非 null 的 destination 必須指向這份 workflow 內存在的 Page。
+ * 抽成獨立函式是因為修訂可以覆蓋整組 actions——套用之後要再驗一次，不能只驗 AI 那一版。
+ */
+export function checkWorkflowDestinations(workflow: Workflow): void {
+  const keys = new Set(workflow.pages.map((p) => pageIdKey(p)));
+  const bad = workflow.pages
+    .flatMap((p) => p.actions)
+    .map((a) => a.destination)
+    .filter((dest): dest is PageId => dest !== null && !keys.has(pageIdKey(dest)));
+  if (bad.length) {
+    throw new WorkflowConsistencyError(`操作去向指向未截到的 Page：${bad.map(label).join("、")}`);
+  }
+}
+
+/**
  * 由 pages.json 與 agent 的逐頁描述接合出並驗證一份 workflow 物件。
  * - 涵蓋：描述須與截到的 Page 一一對應——漏頁、多頁或重複描述皆丟 WorkflowConsistencyError。
- * - 操作去向：每個非 null 的 destination 必須指向 pages.json 內存在的 Page，否則丟 WorkflowConsistencyError。
  * - route/tab 與 screenshot 一律取自 pages.json（單一真實來源），描述只提供 purpose/content/actions。
+ * - 修訂：存檔前套上人工修訂（見 ADR-0012）。**人的校正壓過 AI 的新產出**，即使 AI 這次寫得更好；
+ *   一個欄位被下過 set 就凍結在使用者的值，要放棄得手動從修訂檔刪掉那筆。錨到已不存在的 Page
+ *   的修訂算孤兒：保留該筆、發 warning、其餘照套。
+ * - 操作去向：套用修訂之後再驗一次，非 null 的 destination 必須指向存在的 Page。
  * - 通過契約驗證（overview/purpose/label 非空、Page 識別唯一）才回傳，否則丟 ContractValidationError。
  */
 export function buildWorkflow(
   pages: Pages,
   overview: string,
   descriptions: readonly PageDescription[],
-): Workflow {
+  revisions: readonly Revision[] = [],
+): WorkflowBuild {
   const capturedKeys = pages.pages.map((p) => pageIdKey(p));
   const capturedKeySet = new Set(capturedKeys);
   const describedKeys = descriptions.map((d) => pageIdKey(d));
@@ -63,17 +90,6 @@ export function buildWorkflow(
     throw new WorkflowConsistencyError(`workflow 描述未與 pages.json 一一對應——${parts.join("；")}`);
   }
 
-  // 操作去向：非 null 的 destination 必須指向截到的 Page
-  const badDestinations = descriptions
-    .flatMap((d) => d.actions)
-    .map((a) => a.destination)
-    .filter((dest): dest is PageId => dest !== null && !capturedKeySet.has(pageIdKey(dest)));
-  if (badDestinations.length) {
-    throw new WorkflowConsistencyError(
-      `操作去向指向未截到的 Page：${badDestinations.map(label).join("、")}`,
-    );
-  }
-
   // 以 pages.json 的 route/tab 與 screenshot 為準組裝逐頁描述
   const byKey = new Map(descriptions.map((d) => [pageIdKey(d), d]));
   const workflowPages = pages.pages.map((p) => {
@@ -82,7 +98,11 @@ export function buildWorkflow(
     return { ...id, screenshot: p.screenshot, purpose: d.purpose, content: d.content, actions: d.actions };
   });
 
-  return parseWorkflow({ project: pages.project, overview, pages: workflowPages });
+  const assembled: Workflow = { project: pages.project, overview, pages: workflowPages };
+  const { result, warnings } = applyWorkflowRevisions(assembled, revisions);
+  checkWorkflowDestinations(result);
+
+  return { workflow: parseWorkflow(result), warnings };
 }
 
 /**

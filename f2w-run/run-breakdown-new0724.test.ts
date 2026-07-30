@@ -1,10 +1,12 @@
 import { expect, test } from "vitest";
 import { buildWorkitems, loadWorkflowForBreakdown, saveWorkitems } from "../src/breakdown";
 import type { WorkItemInput } from "../src/breakdown";
+import { loadProjectRevisions } from "../src/revise";
 
 // f2w-breakdown 驅動：讀回 workflow.json，逐操作產出前端工項＋推論後端工項，
 // 經 buildWorkitems 五重把關後 saveWorkitems 落地 workitems.json。
 const OUTPUT_ROOT = "output";
+const WORKSPACE_ROOT = "workspace";
 const PROJECT = "new_0724_AI六大模組管理平台_桃園智發會_最新版";
 
 /** 單筆工項的內容型欄位（id／sourcePage／inferred 由產生器補齊）。 */
@@ -438,9 +440,21 @@ test("f2w-breakdown：劃分前端／後端工項並落地 workitems.json", () =
     };
   });
 
-  const workitems = buildWorkitems(workflow, frontend, backend);
+  // 存檔前套上人工修訂；後端 id 漂掉的那些會變孤兒，只發 warning。
+  const revisions = loadProjectRevisions(WORKSPACE_ROOT, PROJECT);
+  const { workitems, warnings } = buildWorkitems(workflow, frontend, backend, revisions);
   expect(workitems.frontend).toHaveLength(workflow.pages.reduce((n, p) => n + p.actions.length, 0));
-  expect(workitems.backend).toHaveLength(BACKEND.length);
+  expect(workitems.backend.map((i) => i.id)).toEqual(
+    expect.arrayContaining(BACKEND.map((b) => b.id)),
+  );
+
+  // 後端修訂的孤兒比例：spec 假設「補漏比改錯常見」，這裡把數字量出來。
+  const backendSets = revisions.filter(
+    (r) => r.op === "set" && typeof r.anchor === "string" && r.anchor.startsWith("BE-"),
+  ).length;
+  const orphaned = warnings.filter((w) => w.includes("BE-")).length;
+  console.log(`後端 set 修訂 ${backendSets} 筆，其中孤兒 ${orphaned} 筆`);
+  for (const w of warnings) console.warn(w);
 
   saveWorkitems(OUTPUT_ROOT, PROJECT, workitems);
 });

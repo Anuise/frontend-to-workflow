@@ -28,7 +28,7 @@ const workitems: Workitems = {
   project: "demo",
   frontend: [
     {
-      id: "FE-1",
+      id: "FE-01-01",
       sourcePage: { route: "/" },
       title: "首頁",
       scope: "呈現歡迎訊息與導覽。",
@@ -38,7 +38,7 @@ const workitems: Workitems = {
       inferred: false,
     },
     {
-      id: "FE-2",
+      id: "FE-02-01",
       sourcePage: { route: "/settings", tab: "個人資料" },
       title: "個人資料表單",
       scope: "姓名與 Email 欄位。",
@@ -55,7 +55,7 @@ const workitems: Workitems = {
       title: "儲存個人資料 API",
       scope: "驗證後持久化。",
       acceptance: "合法回 200。",
-      dependsOn: ["FE-2"],
+      dependsOn: ["FE-02-01"],
       risk: "契約推論而來。",
       inferred: true,
     },
@@ -87,13 +87,13 @@ describe("buildWorkitemsWorkbook", () => {
     // 標頭比對
     const header = ws.getRow(1).values as unknown[];
     expect(header.slice(1)).toEqual([...FRONTEND_COLUMNS]);
-    // 第 2 列（FE-1）：AI 內容型欄位
+    // 第 2 列（FE-01-01）：AI 內容型欄位
     const row = ws.getRow(2);
-    expect(String(row.getCell(1).value)).toBe("FE-1");
+    expect(String(row.getCell(1).value)).toBe("FE-01-01");
     expect(String(row.getCell(2).value)).toBe("/");
     expect(String(row.getCell(3).value)).toBe("首頁");
     expect(String(row.getCell(15).value ?? "")).toBe(""); // 風險備註（空字串）
-    // 第 3 列（FE-2）：來源 Page 帶 tab 標籤
+    // 第 3 列（FE-02-01）：來源 Page 帶 tab 標籤
     expect(String(ws.getRow(3).getCell(2).value)).toBe("/settings（個人資料）");
     expect(String(ws.getRow(3).getCell(15).value)).toBe("驗證規則待確認。");
   });
@@ -127,7 +127,7 @@ describe("buildWorkitemsWorkbook", () => {
     }
     // dependsOn 呈現於依賴欄
     const dependsIdx = header.indexOf("依賴");
-    expect(String(ws.getRow(2).getCell(dependsIdx + 1).value)).toContain("FE-2");
+    expect(String(ws.getRow(2).getCell(dependsIdx + 1).value)).toContain("FE-02-01");
   });
 
   it("概述 sheet 含工項統計與 RACI／狀態圖例（AC：概述統計與圖例）", () => {

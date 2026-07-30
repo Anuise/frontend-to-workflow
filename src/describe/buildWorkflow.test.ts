@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Pages } from "../contracts/pages";
+import { parseRevisions } from "../contracts/revisions";
 import { ContractValidationError } from "../contracts/validate";
 import { loadWorkflow } from "../contracts/workflow";
 import { contractPath } from "../output";
@@ -44,7 +45,7 @@ const descriptions: PageDescription[] = [
 
 describe("buildWorkflow", () => {
   it("接合逐頁描述與 pages.json，回傳含 Overview 的合法 Workflow", () => {
-    const w = buildWorkflow(pages, overview, descriptions);
+    const { workflow: w } = buildWorkflow(pages, overview, descriptions);
     expect(w.project).toBe("demo");
     expect(w.overview).toBe(overview);
     expect(w.pages).toHaveLength(2);
@@ -100,7 +101,7 @@ describe("buildWorkflow", () => {
 describe("saveWorkflow", () => {
   it("驗證後寫出 workflow.json，可被 loadWorkflow 讀回", () => {
     const root = mkdtempSync(join(tmpdir(), "f2w-desc-save-"));
-    const w = buildWorkflow(pages, overview, descriptions);
+    const { workflow: w } = buildWorkflow(pages, overview, descriptions);
     const path = saveWorkflow(root, "demo", w);
     expect(path).toBe(contractPath(root, "demo", "workflow"));
     expect(loadWorkflow(path)).toEqual(w);
@@ -115,5 +116,41 @@ describe("saveWorkflow", () => {
     );
     expect(existsSync(path)).toBe(false);
     rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe("buildWorkflow：修訂接線", () => {
+  const revisions = parseRevisions([
+    {
+      target: "workflow",
+      op: "set",
+      anchor: { route: "/settings", tab: "個人資料" },
+      field: "purpose",
+      value: "其實是 SSO 轉導的中繼頁。",
+      reason: "用途寫錯。",
+    },
+  ]);
+
+  it("傳入的修訂確實被套進輸出，其餘頁照舊", () => {
+    const { workflow: w, warnings } = buildWorkflow(pages, overview, descriptions, revisions);
+    expect(w.pages[1]?.purpose).toBe("其實是 SSO 轉導的中繼頁。");
+    expect(w.pages[0]?.purpose).toBe("首頁，是整個前端的進入點。");
+    expect(warnings).toEqual([]);
+  });
+
+  it("修訂覆蓋整組 actions 後仍驗操作去向，指向未截到的 Page 時丟 WorkflowConsistencyError", () => {
+    const bad = parseRevisions([
+      {
+        target: "workflow",
+        op: "set",
+        anchor: { route: "/settings", tab: "個人資料" },
+        field: "actions",
+        value: [{ label: "前往不存在的頁", destination: { route: "/nope" } }],
+        reason: "去向改錯。",
+      },
+    ]);
+    const call = () => buildWorkflow(pages, overview, descriptions, bad);
+    expect(call).toThrow(WorkflowConsistencyError);
+    expect(call).toThrow(/\/nope/);
   });
 });

@@ -68,6 +68,18 @@ _Avoid_: 分工, 指派, assignment（泛稱）
 `workitems.xlsx` 是畫押欄留白的**範本**、可被重跑覆蓋；人須另存一份**工作副本**填畫押值，重跑只覆蓋範本、不動工作副本。
 _Avoid_: 空白表／填好的表（泛稱）
 
+## 人工修訂（Revision）
+
+**Revision（修訂）**:
+一筆錨定在 Page 或 Work item 上的人工校正，覆蓋 AI 產出的**單一欄位**或**整筆工項**，帶一句 `reason`。由 `f2w-revise` 從使用者的話轉寫而來，也可手寫；落在 `workspace/revisions/<project>/revisions.json`，是 append-only 的累積陣列。套用的執行者是**上游**（`f2w-describe`／`f2w-breakdown` 存檔前套），所以重跑上游會帶回校正而不是沖掉它；代價是效果不即時，且被覆蓋過的欄位就凍結在人的值。
+_Avoid_: Override（偏實作語彙）, Correction（預設原本是錯的，但有些修訂只是偏好）, Feedback（太軟，聽起來不會被套用）
+
+**Effective revision set（有效修訂集）**:
+把累積的 Revision 依**作用點**摺疊、每個作用點只取最後一筆的結果——`set` 的作用點是 `(target, anchor, field)`，`upsert` 與 `remove` 共用 `(target, itemId)`。順序只在摺疊那一步有意義，摺疊之後套用對排列不敏感（固定序 `remove` → `upsert` → `set`）。是實際被套用的那一組。
+_Avoid_: 修訂清單（那是含歷史的完整陣列）, patch set, diff
+
+**`workspace/` 與 `output/` 的分界**：**依內容的作者分**，不是依誰寫出檔案。`workspace/` 放**人的意圖**（權責泳道圖、Vendor spec、Revision）；`output/` 放**管線寫出來的內容**。這也回答了「那 `mainflow.json` 為什麼在 `output/`」——它可以手改，但內容作者是 AI（主線推論），人只是校正。見 ADR-0011。
+
 ## 分工歸屬（Sourcing）
 
 **權責泳道圖（Responsibility swimlane diagram）**:

@@ -1,9 +1,16 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { type PageId, pageIdKey } from "../contracts/page";
+import type { Revision } from "../contracts/revisions";
 import type { Workflow } from "../contracts/workflow";
-import { type WorkItem, type Workitems, parseWorkitems } from "../contracts/workitems";
+import {
+  type WorkItem,
+  type Workitems,
+  frontendWorkitemId,
+  parseWorkitems,
+} from "../contracts/workitems";
 import { contractPath } from "../output";
+import { applyWorkitemsRevisions } from "../revise/applyRevisions";
 
 /**
  * 組裝 buildWorkitems 的單筆輸入：一筆 Work item 的內容型欄位。
@@ -11,10 +18,17 @@ import { contractPath } from "../output";
  */
 export type WorkItemInput = Omit<WorkItem, "inferred">;
 
+/** buildWorkitems 的產出：驗過的 workitems，加上套用修訂時要交代的 warning（孤兒修訂）。 */
+export interface WorkitemsBuild {
+  workitems: Workitems;
+  warnings: string[];
+}
+
 /**
  * 工項劃分與 workflow.json 不一致時丟出：
- *  - 涵蓋：某個 Page 沒有任何前端工項；
- *  - 參照：某筆 sourcePage 指向 workflow.pages 沒有的 Page，或 dependsOn 指向本批不存在的工項 id。
+ *  - 涵蓋：某個 Page 沒有任何前端工項（或前端工項數少於該頁可執行操作數）；
+ *  - 參照：某筆 sourcePage 指向 workflow.pages 沒有的 Page，或 dependsOn 指向本批不存在的工項 id；
+ *  - 前端 id 未依 workflow.json 的陣列索引推導。
  */
 export class WorkitemsConsistencyError extends Error {
   constructor(message: string) {
@@ -29,28 +43,16 @@ function label(id: PageId): string {
 }
 
 /**
- * 由 workflow.json 與 AI 產出的前端／後端工項接合出並驗證一份 workitems 物件。
- * - 參照：每筆 sourcePage 必須指向 workflow.pages 內存在的 Page，否則丟 WorkitemsConsistencyError。
- * - 涵蓋：每個 workflow.pages 的 Page 至少要有一筆前端工項，否則丟 WorkitemsConsistencyError。
- * - 參照：dependsOn 每個 id 必須存在於本批工項（前端＋後端），否則丟 WorkitemsConsistencyError。
- * - inferred 一律由陣列決定：前端 false、後端 true；sourcePage 取自 workflow.pages（單一真實來源）。
- * - 通過契約驗證（欄位非空、id 全域唯一、inferred 旗標）才回傳，否則冒泡 ContractValidationError。
+ * 參照與顆粒度把關，對象是一份**已成形的** workitems。
+ * 抽成獨立函式是因為修訂會增刪工項——套用之後必須再跑一次，否則 remove 掉太多前端工項
+ * 就會跌破底線而沒人發現；乾跑也共用這一支。
  */
-export function buildWorkitems(
-  workflow: Workflow,
-  frontendItems: readonly WorkItemInput[],
-  backendItems: readonly WorkItemInput[],
-): Workitems {
-  const pageByKey = new Map<string, PageId>(
-    workflow.pages.map((p) => [
-      pageIdKey(p),
-      p.tab === undefined ? { route: p.route } : { route: p.route, tab: p.tab },
-    ]),
-  );
-  const all = [...frontendItems, ...backendItems];
+export function checkWorkitemsConsistency(workflow: Workflow, workitems: Workitems): void {
+  const all = [...workitems.frontend, ...workitems.backend];
+  const pageKeys = new Set(workflow.pages.map((p) => pageIdKey(p)));
 
   // 參照：sourcePage 必須指向 workflow.pages 內存在的 Page
-  const badSource = all.filter((i) => !pageByKey.has(pageIdKey(i.sourcePage)));
+  const badSource = all.filter((i) => !pageKeys.has(pageIdKey(i.sourcePage)));
   if (badSource.length) {
     throw new WorkitemsConsistencyError(
       `工項的 sourcePage 指向 workflow.pages 沒有的 Page：${badSource
@@ -63,7 +65,7 @@ export function buildWorkitems(
   // 逐可執行操作至少一筆前端工項；純顯示頁（0 actions）至少一筆。
   // max(1, …) 保證下限恆 ≥1，故此檢查涵蓋並取代舊的 per-page ≥1 涵蓋把關。
   const feCountByKey = new Map<string, number>();
-  for (const i of frontendItems) {
+  for (const i of workitems.frontend) {
     const k = pageIdKey(i.sourcePage);
     feCountByKey.set(k, (feCountByKey.get(k) ?? 0) + 1);
   }
@@ -84,17 +86,72 @@ export function buildWorkitems(
   if (dangling.length) {
     throw new WorkitemsConsistencyError(`dependsOn 指向不存在的工項 id：${dangling.join("、")}`);
   }
+}
 
-  // inferred 由陣列決定；sourcePage 取自 workflow.pages
-  const canonical = (i: WorkItemInput, inferred: boolean): WorkItem => ({
+/**
+ * 由 workflow.json 與 AI 產出的前端／後端工項接合出並驗證一份 workitems 物件。
+ * - 參照：每筆 sourcePage 必須指向 workflow.pages 內存在的 Page，否則丟 WorkitemsConsistencyError。
+ * - 前端 id：逐筆等於 frontendWorkitemId(頁索引, 該頁工項索引)，不由 AI 自由編號（見 ADR-0013）。
+ *   後端 id 刻意不受此約束。
+ * - inferred 一律由陣列決定：前端 false、後端 true；sourcePage 取自 workflow.pages（單一真實來源）。
+ * - 修訂：存檔前套上人工修訂（見 ADR-0012）。**人的校正壓過 AI 的新產出**；錨到已不存在的工項
+ *   的修訂算孤兒：保留該筆、發 warning、其餘照套。
+ * - 套用修訂之後仍跑全部把關：涵蓋／顆粒度底線／dependsOn 參照。跌破底線即丟錯、**不落地**。
+ * - 通過契約驗證（欄位非空、id 全域唯一、前端 id 格式、inferred 旗標）才回傳，否則冒泡 ContractValidationError。
+ */
+export function buildWorkitems(
+  workflow: Workflow,
+  frontendItems: readonly WorkItemInput[],
+  backendItems: readonly WorkItemInput[],
+  revisions: readonly Revision[] = [],
+): WorkitemsBuild {
+  const pageByKey = new Map<string, PageId>(
+    workflow.pages.map((p) => [
+      pageIdKey(p),
+      p.tab === undefined ? { route: p.route } : { route: p.route, tab: p.tab },
+    ]),
+  );
+  // 前端 id 確定性：逐筆等於由 workflow.json 陣列索引推導的值，不由 AI 自由編號。
+  // 這是 workitems 側修訂能撐過重拆的前提（見 ADR-0013）；後端 id 刻意不受此約束。
+  const pageIndexByKey = new Map(workflow.pages.map((p, i) => [pageIdKey(p), i]));
+  const seqByKey = new Map<string, number>();
+  const misnumbered = frontendItems.flatMap((i) => {
+    const k = pageIdKey(i.sourcePage);
+    const seq = seqByKey.get(k) ?? 0;
+    seqByKey.set(k, seq + 1);
+    const pageIndex = pageIndexByKey.get(k);
+    if (pageIndex === undefined) return []; // sourcePage 本身有問題，交給下面的參照把關報
+    const expected = frontendWorkitemId(pageIndex, seq);
+    return i.id === expected ? [] : [`${i.id}（該頁第 ${seq + 1} 筆，應為 ${expected}）`];
+  });
+  if (misnumbered.length) {
+    throw new WorkitemsConsistencyError(
+      `前端工項 id 未依 workflow.json 的陣列索引推導：${misnumbered.join("、")}`,
+    );
+  }
+
+  // inferred 由陣列決定（單一真實來源，不由修訂覆蓋）
+  const assembled: Workitems = {
+    project: workflow.project,
+    frontend: frontendItems.map((i) => ({ ...i, inferred: false })),
+    backend: backendItems.map((i) => ({ ...i, inferred: true })),
+  };
+
+  const { result, warnings } = applyWorkitemsRevisions(assembled, revisions);
+  checkWorkitemsConsistency(workflow, result); // 含 sourcePage 參照，故下面的查表安全
+
+  // sourcePage 一律取自 workflow.pages（單一真實來源），修訂補進來的工項也一併正規化
+  const canonical = (i: WorkItem): WorkItem => ({
     ...i,
     sourcePage: pageByKey.get(pageIdKey(i.sourcePage))!,
-    inferred,
   });
-  const frontend = frontendItems.map((i) => canonical(i, false));
-  const backend = backendItems.map((i) => canonical(i, true));
+  const validated: Workitems = {
+    ...result,
+    frontend: result.frontend.map(canonical),
+    backend: result.backend.map(canonical),
+  };
 
-  return parseWorkitems({ project: workflow.project, frontend, backend });
+  return { workitems: parseWorkitems(validated), warnings };
 }
 
 /**

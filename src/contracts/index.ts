@@ -5,3 +5,4 @@ export * from "./pages";
 export * from "./workflow";
 export * from "./mainflow";
 export * from "./workitems";
+export * from "./revisions";
