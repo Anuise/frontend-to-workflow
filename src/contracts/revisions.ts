@@ -129,7 +129,7 @@ export type SetRevision = z.infer<typeof setRevisionSchema>;
 export type UpsertRevision = z.infer<typeof upsertRevisionSchema>;
 export type RemoveRevision = z.infer<typeof removeRevisionSchema>;
 
-/** 修訂錨在哪一支產出上。刻意是 union 而非布林——未來支援 workitems-sourced.json 只是多一個值。 */
+/** 修訂錨在哪一支產出上。刻意是 union 而非布林——未來多一支產出可以修訂時只是多一個值。 */
 export type RevisionTarget = "workflow" | "workitems";
 
 /** 一筆錨定在 Page 或 Work item 上的人工校正，覆蓋 AI 產出的單一欄位或整筆工項。 */

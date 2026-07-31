@@ -25,7 +25,7 @@ const spec = {
 };
 
 function writeSpec(name: string, body: unknown): { root: string; path: string } {
-  const root = mkdtempSync(join(tmpdir(), "f2w-sourcing-spec-"));
+  const root = mkdtempSync(join(tmpdir(), "f2w-vendor-spec-"));
   const path = join(root, name);
   writeFileSync(path, JSON.stringify(body), "utf8");
   return { root, path };
@@ -61,7 +61,7 @@ describe("parseVendorSpec", () => {
     const noEndpoint = writeSpec("c.json", { openapi: "3.0.0", paths: {} });
     expect(() => parseVendorSpec(noEndpoint.path, "c")).toThrow(/沒有任何可用端點/);
 
-    const broken = mkdtempSync(join(tmpdir(), "f2w-sourcing-spec-"));
+    const broken = mkdtempSync(join(tmpdir(), "f2w-vendor-spec-"));
     const brokenPath = join(broken, "d.json");
     writeFileSync(brokenPath, "{ not json", "utf8");
     expect(() => parseVendorSpec(brokenPath, "d")).toThrow(VendorSpecError);

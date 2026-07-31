@@ -5,7 +5,7 @@ description: frontend-to-workflow 管線的第一步。偵測並啟動 Workspace
 
 # f2w-start：偵測並啟動 project
 
-管線四步的第一步。把一個 **Project**（Workspace 底下的子資料夾）偵測出如何安裝、啟動、對外 port 與 base URL，經使用者確認後保存成 **Manifest**（`output/<project>/manifest.yml`），並依此把 project 實際跑起來，給後續 `f2w-capture` 一個可截圖的執行中前端。
+管線的第一步。把一個 **Project**（Workspace 底下的子資料夾）偵測出如何安裝、啟動、對外 port 與 base URL，經使用者確認後保存成 **Manifest**（`output/<project>/manifest.yml`），並依此把 project 實際跑起來，給後續 `f2w-capture` 一個可截圖的執行中前端。
 
 前置：無（本步是管線起點）。產出：`output/<project>/manifest.yml`。
 假設：**純前端**，無後端、無登入，不處理 auth。

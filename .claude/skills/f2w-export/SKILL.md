@@ -5,7 +5,7 @@ description: frontend-to-workflow 管線的第四步。讀取 workflow.json、pa
 
 # f2w-export：組裝 Workbook（workflow.xlsx）
 
-管線四步的第四步。讀取 f2w-describe 的產出 `output/<project>/workflow.json`（Overview 與逐頁 Workflow description，新版每頁含 `screenshot` 截圖來源）、f2w-capture 的 `output/<project>/pages.json`（Page → 截圖檔名對應）與 `output/<project>/screenshots/`，組裝出交付物 `output/<project>/workflow.xlsx`：含「概述」與「逐頁工作流程」兩個 sheet，逐頁列出描述並嵌入截圖縮圖。
+管線的第四步。讀取 f2w-describe 的產出 `output/<project>/workflow.json`（Overview 與逐頁 Workflow description，新版每頁含 `screenshot` 截圖來源）、f2w-capture 的 `output/<project>/pages.json`（Page → 截圖檔名對應）與 `output/<project>/screenshots/`，組裝出交付物 `output/<project>/workflow.xlsx`：含「概述」與「逐頁工作流程」兩個 sheet，逐頁列出描述並嵌入截圖縮圖。
 
 前置：`output/<project>/workflow.json`（f2w-describe 產出）、`output/<project>/pages.json` 與 `output/<project>/screenshots/`（f2w-capture 產出）。缺 `workflow.json` 中止並提示先跑 f2w-describe；缺 `pages.json` 或 `screenshots/`（含個別截圖檔）中止並提示先跑 f2w-capture。
 產出：`output/<project>/workflow.xlsx`。

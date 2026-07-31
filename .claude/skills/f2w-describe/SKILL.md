@@ -5,7 +5,7 @@ description: frontend-to-workflow 管線的第三步。讀取 pages.json 與 scr
 
 # f2w-describe：逐頁工作流程描述
 
-管線四步的第三步。讀取 f2w-capture 的產出（`output/<project>/pages.json` 與 `output/<project>/screenshots/`），以**使用者視角**為每個 **Page** 寫一段 **Workflow description**（截圖來源、頁面用途、主要內容、可執行操作、每個操作的**操作去向**），並另外寫一段跨所有 Page 的 **Overview**，組裝驗證後產出 `output/<project>/workflow.json`，交給後續 `f2w-export`。
+管線的第三步。讀取 f2w-capture 的產出（`output/<project>/pages.json` 與 `output/<project>/screenshots/`），以**使用者視角**為每個 **Page** 寫一段 **Workflow description**（截圖來源、頁面用途、主要內容、可執行操作、每個操作的**操作去向**），並另外寫一段跨所有 Page 的 **Overview**，組裝驗證後產出 `output/<project>/workflow.json`，交給後續 `f2w-export`。
 
 前置：`output/<project>/pages.json` 與 `output/<project>/screenshots/`（由 f2w-capture 產出）。任一缺件即中止並提示先跑 f2w-capture。另有一份**可選**前置：`workspace/revisions/<project>/revisions.json`（由 f2w-revise 產出，缺檔視為沒有修訂）。
 產出：`output/<project>/workflow.json`。
