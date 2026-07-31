@@ -9,7 +9,6 @@ export const CONTRACT_FILES = {
   mainflow: "mainflow.json",
   diagram: "mainflow.drawio",
   workitems: "workitems.json",
-  workitemsSourced: "workitems-sourced.json",
   workitemsWorkbook: "workitems.xlsx",
 } as const;
 
@@ -27,7 +26,6 @@ export const CONTRACT_PRODUCER: Record<ContractName, string> = {
   mainflow: "f2w-diagram",
   diagram: "f2w-diagram",
   workitems: "f2w-breakdown",
-  workitemsSourced: "f2w-sourcing",
   workitemsWorkbook: "f2w-breakdown-export",
 };
 

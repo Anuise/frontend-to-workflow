@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MissingPrerequisiteError } from "../prerequisites";
-import { isSourcedWorkitems, loadWorkitemsForExport } from "./inputs";
+import { hasPartyChains, loadWorkitemsForExport } from "./inputs";
 
-// 合成的 workitems-sourced.json：一筆前端、一筆帶分工歸屬的後端。
+// 合成的 workitems.json：一筆前端、一筆帶分工鏈的後端。
 const SOURCED = {
   project: "demo",
   frontend: [
@@ -30,9 +30,13 @@ const SOURCED = {
       dependsOn: ["FE-01-01"],
       risk: "",
       inferred: true,
-      assignedParty: "sample-vendor",
-      vendor: "sample-vendor",
-      vendorEndpoints: ["POST /api/v1/login"],
+      partyChain: [
+        {
+          party: "sample-vendor",
+          vendor: "sample-vendor",
+          vendorEndpoints: ["POST /api/v1/login"],
+        },
+      ],
       sourcingConfirmed: false,
     },
   ],
@@ -52,25 +56,24 @@ describe("loadWorkitemsForExport", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("sourced 檔在就優先讀 workitems-sourced.json（AC：ADR-0004 sourced 優先）", () => {
+  it("分工鏈長在 workitems.json 上，沒有第二份檔要挑（AC：sourced 契約退場）", () => {
     const root = mkdtempSync(join(tmpdir(), "f2w-breakdown-export-sourced-"));
     mkdirSync(join(root, "demo"), { recursive: true });
-    // 刻意只放 sourced 檔：它是完整副本，不需要 workitems.json 也讀得動
-    writeFileSync(join(root, "demo", "workitems-sourced.json"), JSON.stringify(SOURCED));
+    writeFileSync(join(root, "demo", "workitems.json"), JSON.stringify(SOURCED));
 
     const loaded = loadWorkitemsForExport(root, "demo");
-    expect(isSourcedWorkitems(loaded)).toBe(true);
-    expect(loaded.backend[0]).toMatchObject({
-      assignedParty: "sample-vendor",
+    expect(hasPartyChains(loaded)).toBe(true);
+    expect(loaded.backend[0]?.partyChain?.[0]).toMatchObject({
+      party: "sample-vendor",
       vendor: "sample-vendor",
-      sourcingConfirmed: false,
     });
+    expect(loaded.backend[0]?.sourcingConfirmed).toBe(false);
     rmSync(root, { recursive: true, force: true });
   });
 
   it("前置齊備時讀回並驗證 workitems（用真實 fixtures）", () => {
     const workitems = loadWorkitemsForExport(FIXTURE_ROOT, FIXTURE_PROJECT);
-    expect(isSourcedWorkitems(workitems)).toBe(false); // fixtures 無 sourced 檔
+    expect(hasPartyChains(workitems)).toBe(false); // fixtures 不帶分工鏈
     expect(workitems.project).toBe("sample-frontend");
     expect(workitems.frontend).toHaveLength(4);
     expect(workitems.backend).toHaveLength(2);

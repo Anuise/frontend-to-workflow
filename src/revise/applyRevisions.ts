@@ -1,7 +1,7 @@
 import { pageIdKey } from "../contracts/page";
 import { OVERVIEW_ANCHOR, type Revision } from "../contracts/revisions";
 import type { Workflow } from "../contracts/workflow";
-import type { WorkItem, Workitems } from "../contracts/workitems";
+import { type WorkItem, type Workitems, parsePartyLegLabel } from "../contracts/workitems";
 
 /** 只錨在 workflow.json 上的修訂。 */
 export type WorkflowRevision = Extract<Revision, { target: "workflow" }>;
@@ -18,7 +18,7 @@ export interface RevisionApplication<T> {
  * 作用點：`set` 是 `(target, anchor, field)`；`upsert` 與 `remove` 是 `(target, itemId)`，
  * 兩者**共用同一個作用點空間**——`remove` 後又 `upsert` 同 id 則工項活著，反過來則被刪掉。
  */
-function actionPoint(r: Revision): string {
+export function actionPoint(r: Revision): string {
   const anchor = typeof r.anchor === "string" ? r.anchor : pageIdKey(r.anchor);
   return r.op === "set" ? `${r.target}|${anchor}|${r.field}` : `${r.target}|${anchor}`;
 }
@@ -82,6 +82,20 @@ export function applyWorkflowRevisions(
 }
 
 /**
+ * 把一筆 `set` 寫進工項層欄位。
+ * 抽成獨立函式是因為 leg 錨的分支也要落回這裡（`risk`／`dependsOn` 沒有 leg 層版本），
+ * 而**漏掉一個 field 分支就是靜默 no-op**——`partyChain` 那條正是這樣差點漏掉的。
+ */
+function setItemField(item: WorkItem, r: Extract<WorkitemsRevision, { op: "set" }>): void {
+  if (r.field === "title") item.title = r.value;
+  else if (r.field === "scope") item.scope = r.value;
+  else if (r.field === "acceptance") item.acceptance = r.value;
+  else if (r.field === "risk") item.risk = r.value;
+  else if (r.field === "dependsOn") item.dependsOn = [...r.value];
+  else if (r.field === "partyChain") item.partyChain = r.value.map((l) => ({ ...l }));
+}
+
+/**
  * 把修訂套到一份 workitems 上。**純函式**：不讀檔、不改動傳入的物件。
  * 有效修訂集內按**固定序 `remove` → `upsert` → `set`** 套用（寫死的規則、不是檔案順序），
  * 所以 `set` 永遠作用在最終存在的物件上，而有效修訂集本身對排列不敏感。
@@ -131,17 +145,37 @@ export function applyWorkitemsRevisions(
 
   for (const r of effective) {
     if (r.op !== "set") continue;
-    const found = locate(r.anchor);
+    // 錨可能是交付物上的 leg 標籤 `<工項id>#<leg序>`——使用者照交付物抄下來的錨必須錨得到
+    // 東西（見 ADR-0016）。工項 id 由契約層保證不含 `#`，所以切法無歧義。
+    const { itemId, legIndex } = parsePartyLegLabel(r.anchor);
+    const found = locate(itemId);
     if (!found) {
       warnings.push(orphanRevisionWarning(r));
       continue;
     }
     const item = found.list[found.index]!;
-    if (r.field === "title") item.title = r.value;
-    else if (r.field === "scope") item.scope = r.value;
-    else if (r.field === "acceptance") item.acceptance = r.value;
-    else if (r.field === "risk") item.risk = r.value;
-    else if (r.field === "dependsOn") item.dependsOn = [...r.value];
+    if (legIndex !== undefined) {
+      const chain = item.partyChain;
+      if (chain === undefined || legIndex > chain.length) {
+        warnings.push(orphanRevisionWarning(r)); // leg 序超出鏈長＝孤兒，不中止、不自動清除
+        continue;
+      }
+      const legs = chain.map((l) => ({ ...l }));
+      const leg = legs[legIndex - 1]!;
+      // 錨在 leg 上時 partyChain 的 value 取第一段當整段取代——那是覆蓋該 leg 的
+      // party／vendor／vendorEndpoints 的途徑；title／scope／acceptance 則逐欄覆蓋。
+      if (r.field === "partyChain") legs[legIndex - 1] = { ...r.value[0]! };
+      else if (r.field === "title") leg.title = r.value;
+      else if (r.field === "scope") leg.scope = r.value;
+      else if (r.field === "acceptance") leg.acceptance = r.value;
+      else {
+        setItemField(item, r); // risk／dependsOn 是工項層欄位，leg 上沒有
+        continue;
+      }
+      item.partyChain = legs;
+      continue;
+    }
+    setItemField(item, r);
   }
 
   return { result: { ...workitems, frontend, backend }, warnings };

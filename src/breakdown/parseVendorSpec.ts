@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { basename, extname } from "node:path";
 
 /** HTTP method 在 OpenAPI path item 底下的合法鍵。 */
 const METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "trace"] as const;
@@ -60,10 +59,11 @@ function responseSchemas(responses: unknown): { status: string; schema: string }
 
 /**
  * 把一份 OpenAPI／Swagger 檔解析成 Vendor capability 清單（確定性，不經 AI）。
- * 供應商識別名取檔名去副檔名。非合法 spec（不是 JSON 物件、缺 paths）即丟 VendorSpecError。
+ * 供應商識別名由呼叫端傳入（＝spec 所在的目錄名，也就是分工方名，見 ADR-0018）——
+ * 不再取檔名，否則沒被引用的 spec 檔名會變成合法的 party。
+ * 非合法 spec（不是 JSON 物件、缺 paths）即丟 VendorSpecError。
  */
-export function parseVendorSpec(specPath: string): VendorCapability[] {
-  const vendor = basename(specPath, extname(specPath));
+export function parseVendorSpec(specPath: string, vendor: string): VendorCapability[] {
   let doc: unknown;
   try {
     doc = JSON.parse(readFileSync(specPath, "utf8"));

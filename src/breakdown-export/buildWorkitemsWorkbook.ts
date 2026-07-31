@@ -2,10 +2,14 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import ExcelJS from "exceljs";
 import type { PageId } from "../contracts/page";
-import { NEEDS_INVESTIGATION, type SourcedBackendItem } from "../contracts/sourcedWorkitems";
-import type { WorkItem } from "../contracts/workitems";
+import {
+  NEEDS_INVESTIGATION,
+  type WorkItem,
+  type Workitems,
+  partyLegLabel,
+} from "../contracts/workitems";
 import { contractPath } from "../output";
-import { type ExportWorkitems, isSourcedWorkitems } from "./inputs";
+import { hasPartyChains } from "./inputs";
 
 /** 三個 sheet 的名稱（對外常數，供測試與讀取者參照）。 */
 export const OVERVIEW_SHEET = "概述";
@@ -43,10 +47,14 @@ export const FRONTEND_COLUMNS = [
 /** 後端工項 sheet 的欄序：同前端，額外一欄「推論狀態」。 */
 export const BACKEND_COLUMNS = [...FRONTEND_COLUMNS, INFERRED_STATUS_COLUMN] as const;
 
-/** 讀到 workitems-sourced.json 時，後端 sheet 額外呈現的分工歸屬欄。 */
-export const SOURCING_COLUMNS = ["派工方", "供應商", "供應商端點", "來源狀態"] as const;
+/**
+ * 帶分工鏈時，後端 sheet 額外呈現的分工欄。
+ * 「分工段」顯示 `<leg序>/<鏈長>`，讓讀者一眼看出這一列是中繼段還是終點。
+ * 欄名「派工方」沿用既有命名，不改名。
+ */
+export const SOURCING_COLUMNS = ["派工方", "供應商", "供應商端點", "分工段", "來源狀態"] as const;
 
-/** 後端工項 sheet（sourced 版）的欄序：同後端，再加分工歸屬欄。 */
+/** 後端工項 sheet（帶分工鏈）的欄序：同後端，再加分工欄。 */
 export const BACKEND_SOURCED_COLUMNS = [...BACKEND_COLUMNS, ...SOURCING_COLUMNS] as const;
 
 /** 判不出誰做的保留值在表上的字樣（其餘派工方直接顯示方名）。 */
@@ -97,7 +105,8 @@ const INFERRED_STATUS_COL = FRONTEND_COLUMNS.length + 1;
 const ASSIGNED_PARTY_COL = INFERRED_STATUS_COL + 1;
 const VENDOR_COL = ASSIGNED_PARTY_COL + 1;
 const VENDOR_ENDPOINTS_COL = VENDOR_COL + 1;
-const SOURCING_STATUS_COL = VENDOR_ENDPOINTS_COL + 1;
+const LEG_SEGMENT_COL = VENDOR_ENDPOINTS_COL + 1;
+const SOURCING_STATUS_COL = LEG_SEGMENT_COL + 1;
 // AI 內容型欄（需自動換行）。
 const WRAP_COLS = [TITLE_COL, SCOPE_COL, ACCEPTANCE_COL, DEPENDS_COL, RISK_COL];
 
@@ -107,6 +116,27 @@ const NARRATIVE =
   "畫押欄（估時／優先級／RACI／簽核日期／狀態）留白。" +
   "此檔為可重跑覆蓋的範本，請另存一份工作副本填寫畫押值；" +
   "上游更新後重跑只覆蓋範本、不動工作副本。";
+
+/** 一列的分工資訊（一個 leg 一列，各自畫押）。 */
+interface RowLeg {
+  party: string;
+  vendor?: string;
+  vendorEndpoints: readonly string[];
+  index: number;
+  total: number;
+}
+
+/** 表上的一列：已把工項層與 leg 層的散文解析成最終要顯示的值。 */
+export interface ItemRow {
+  label: string;
+  sourcePage: PageId;
+  title: string;
+  scope: string;
+  acceptance: string;
+  dependsOn: readonly string[];
+  risk: string;
+  leg?: RowLeg;
+}
 
 /** 把 Page 識別轉成可讀標籤（含 tab）。 */
 function pageLabel(id: PageId): string {
@@ -121,6 +151,49 @@ function dependsOnText(ids: readonly string[]): string {
 /** 派工方在表上的字樣：保留值顯示「待查」，其餘直接顯示方名。 */
 function partyLabel(party: string): string {
   return party === NEEDS_INVESTIGATION ? NEEDS_INVESTIGATION_LABEL : party;
+}
+
+/** 一筆工項一列（前端，以及不帶分工鏈的後端）。 */
+function plainRow(item: WorkItem): ItemRow {
+  return {
+    label: item.id,
+    sourcePage: item.sourcePage,
+    title: item.title,
+    scope: item.scope,
+    acceptance: item.acceptance,
+    dependsOn: item.dependsOn,
+    risk: item.risk,
+  };
+}
+
+/**
+ * 後端工項展開成列：**一個 leg 一列**，一筆 partyChain 有 N 個 leg 就 N 列。
+ * 列標籤由 partyLegLabel 確定性推導（單 leg 是裸 id，多 leg 是 `<id>#<leg序>`）。
+ * 標題／範疇／驗收取該 leg 的散文，缺欄時（只可能是單 leg）繼承工項層——
+ * 沒有 leg 散文，中繼那一列就會顯示下游方的活與下游方的驗收（見 ADR-0016）。
+ * 不帶 partyChain 的工項走原本的一工項一列。
+ */
+export function expandBackendRows(items: readonly WorkItem[]): ItemRow[] {
+  return items.flatMap((item) => {
+    const chain = item.partyChain;
+    if (chain === undefined) return [plainRow(item)];
+    return chain.map((leg, i) => ({
+      label: partyLegLabel(item.id, i + 1, chain.length),
+      sourcePage: item.sourcePage,
+      title: leg.title ?? item.title,
+      scope: leg.scope ?? item.scope,
+      acceptance: leg.acceptance ?? item.acceptance,
+      dependsOn: item.dependsOn,
+      risk: item.risk,
+      leg: {
+        party: leg.party,
+        ...(leg.vendor === undefined ? {} : { vendor: leg.vendor }),
+        vendorEndpoints: leg.vendorEndpoints,
+        index: i + 1,
+        total: chain.length,
+      },
+    }));
+  });
 }
 
 /** 各欄寬度（AI 內容型欄較寬、承諾型窄欄較窄）。 */
@@ -145,56 +218,58 @@ function columnWidth(header: string): number {
     case "來源狀態":
     case "供應商":
       return 14;
+    case "分工段":
+      return 10;
     default:
       return 12; // 承諾型窄欄
   }
 }
 
-/** 帶分工歸屬的後端工項才填分工歸屬欄（派工方／供應商／端點／來源狀態）。 */
-function addSourcingCells(row: ExcelJS.Row, item: SourcedBackendItem): void {
-  row.getCell(ASSIGNED_PARTY_COL).value = partyLabel(item.assignedParty);
-  if (item.vendor) {
-    row.getCell(VENDOR_COL).value = item.vendor;
+/** 一個 leg 一列：填派工方／供應商／端點／分工段／來源狀態。 */
+function addSourcingCells(row: ExcelJS.Row, leg: RowLeg): void {
+  row.getCell(ASSIGNED_PARTY_COL).value = partyLabel(leg.party);
+  if (leg.vendor) {
+    row.getCell(VENDOR_COL).value = leg.vendor;
   }
-  if (item.vendorEndpoints.length) {
+  if (leg.vendorEndpoints.length) {
     const cell = row.getCell(VENDOR_ENDPOINTS_COL);
-    cell.value = item.vendorEndpoints.join("\n");
+    cell.value = leg.vendorEndpoints.join("\n");
     cell.alignment = { wrapText: true, vertical: "top" };
   }
+  row.getCell(LEG_SEGMENT_COL).value = `${leg.index}/${leg.total}`;
   row.getCell(SOURCING_STATUS_COL).value = SOURCING_STATUS_LABEL;
 }
 
 /**
- * 加一個工項 sheet：標頭列 + 每筆工項一列。
- * AI 內容型欄填值；承諾型欄留白（不設值）；withInferredStatus 時額外填「推論狀態」欄；
- * 工項帶 assignedParty 時再填分工歸屬欄。
+ * 加一個工項 sheet：標頭列 + 每列一筆（後端帶分工鏈時是一 leg 一列）。
+ * AI 內容型欄填值；承諾型欄逐列留白（不設值）；withInferredStatus 時額外填「推論狀態」欄。
  */
 function addItemsSheet(
   wb: ExcelJS.Workbook,
   sheetName: string,
   columns: readonly string[],
-  items: readonly (WorkItem | SourcedBackendItem)[],
+  rows: readonly ItemRow[],
   withInferredStatus: boolean,
 ): void {
   const ws = wb.addWorksheet(sheetName);
   ws.columns = columns.map((header) => ({ header, width: columnWidth(header) }));
   ws.getRow(1).font = { bold: true };
 
-  items.forEach((item, index) => {
+  rows.forEach((item, index) => {
     const row = ws.getRow(index + 2); // 第 1 列為標頭
-    row.getCell(ID_COL).value = item.id;
+    row.getCell(ID_COL).value = item.label;
     row.getCell(SOURCE_COL).value = pageLabel(item.sourcePage);
     row.getCell(TITLE_COL).value = item.title;
     row.getCell(SCOPE_COL).value = item.scope;
     row.getCell(ACCEPTANCE_COL).value = item.acceptance;
     row.getCell(DEPENDS_COL).value = dependsOnText(item.dependsOn);
-    // 第 7～14 欄（承諾型）刻意不設值——範本留白，由人在工作副本填。
+    // 第 7～14 欄（承諾型）刻意不設值——一列一個 leg 一個 A，畫押欄逐列留白。
     row.getCell(RISK_COL).value = item.risk;
     if (withInferredStatus) {
       row.getCell(INFERRED_STATUS_COL).value = INFERRED_STATUS_LABEL; // 額外的「推論狀態」欄
     }
-    if ("assignedParty" in item) {
-      addSourcingCells(row, item);
+    if (item.leg) {
+      addSourcingCells(row, item.leg);
     }
     for (const col of WRAP_COLS) {
       row.getCell(col).alignment = { wrapText: true, vertical: "top" };
@@ -203,7 +278,7 @@ function addItemsSheet(
 }
 
 /** 概述 sheet：整體敘述 ＋ 工項統計 ＋ RACI／狀態／估時／優先級 圖例。 */
-function addOverviewSheet(wb: ExcelJS.Workbook, workitems: ExportWorkitems): void {
+function addOverviewSheet(wb: ExcelJS.Workbook, workitems: Workitems, backendRows: number): void {
   const ws = wb.addWorksheet(OVERVIEW_SHEET);
   ws.columns = [{ width: 100 }];
 
@@ -230,15 +305,21 @@ function addOverviewSheet(wb: ExcelJS.Workbook, workitems: ExportWorkitems): voi
     `優先級：${PRIORITY_LEGEND.join("／")}`,
   ];
 
-  // 讀到 sourced 檔時補一段分工圖例（與推論狀態是兩個獨立的待確認維度）。
-  if (isSourcedWorkitems(workitems)) {
-    const parties = [...new Set(workitems.backend.map((i) => partyLabel(i.assignedParty)))];
+  // 帶分工鏈時補一段分工圖例（與推論狀態是兩個獨立的待確認維度）。
+  if (hasPartyChains(workitems)) {
+    const parties = [
+      ...new Set(
+        workitems.backend.flatMap((i) => (i.partyChain ?? []).map((l) => partyLabel(l.party))),
+      ),
+    ];
     lines.push(
       "",
       "分工圖例",
       `派工方：${parties.join("／")}`,
+      `後端 sheet 一個分工段一列，共 ${backendRows} 列（由後端工項 ${workitems.backend.length} 筆展開而來）。`,
+      "列標籤：單一分工方就是工項 id，多方接力是「<工項id>#<分工段序>」，可直接當修訂錨。",
+      "「分工段」欄顯示 <段序>/<鏈長>；中繼段的供應商與端點可為空（該方只做轉發）。",
       `來源狀態一律「${SOURCING_STATUS_LABEL}」：AI 依權責泳道圖與 Vendor spec 語意配對，開工前須人核。`,
-      "跨方接力拆出的工項各自成列，接力關係看「依賴」欄。",
     );
   }
 
@@ -255,18 +336,19 @@ function addOverviewSheet(wb: ExcelJS.Workbook, workitems: ExportWorkitems): voi
  * - 「概述」sheet：整體敘述、工項統計與 RACI／狀態／估時／優先級 圖例。
  * - 「前端工項」sheet：每列一筆前端 Work item；AI 內容型欄填值、承諾型欄留白。
  * - 「後端工項」sheet：同前端，額外「推論狀態」欄一律顯示「推論·待確認」；
- *   來源是 workitems-sourced.json 時再加分工歸屬欄（派工方／供應商／端點／來源狀態）。
+ *   帶 partyChain 時**一個 leg 一列**並加分工欄（派工方／供應商／端點／分工段／來源狀態）。
  */
-export function buildWorkitemsWorkbook(workitems: ExportWorkitems): ExcelJS.Workbook {
-  const sourced = isSourcedWorkitems(workitems);
+export function buildWorkitemsWorkbook(workitems: Workitems): ExcelJS.Workbook {
+  const sourced = hasPartyChains(workitems);
+  const backendRows = expandBackendRows(workitems.backend);
   const wb = new ExcelJS.Workbook();
-  addOverviewSheet(wb, workitems);
-  addItemsSheet(wb, FRONTEND_SHEET, FRONTEND_COLUMNS, workitems.frontend, false);
+  addOverviewSheet(wb, workitems, backendRows.length);
+  addItemsSheet(wb, FRONTEND_SHEET, FRONTEND_COLUMNS, workitems.frontend.map(plainRow), false);
   addItemsSheet(
     wb,
     BACKEND_SHEET,
     sourced ? BACKEND_SOURCED_COLUMNS : BACKEND_COLUMNS,
-    workitems.backend,
+    backendRows,
     true,
   );
   return wb;

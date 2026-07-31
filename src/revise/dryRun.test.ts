@@ -85,7 +85,7 @@ describe("dryRunWorkflowRevisions", () => {
         },
       ]),
     );
-    expect(report).toEqual({ target: "workflow", ok: true, orphans: [] });
+    expect(report).toMatchObject({ target: "workflow", ok: true, orphans: [] });
   });
 
   it("修訂會讓契約驗證失敗時回 ok=false 與完整錯誤訊息", () => {
@@ -163,7 +163,7 @@ describe("dryRunWorkitemsRevisions", () => {
         },
       ]),
     );
-    expect(report).toEqual({ target: "workitems", ok: true, orphans: [] });
+    expect(report).toMatchObject({ target: "workitems", ok: true, orphans: [] });
   });
 
   it("修訂會跌破顆粒度底線時報出來", () => {

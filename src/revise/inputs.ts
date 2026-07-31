@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  REVISIONS_ARCHIVE_FILE,
   REVISIONS_FILE,
   type Revision,
   loadRevisionsFile,
@@ -18,7 +19,15 @@ export function revisionsPath(workspaceRoot: string, project: string): string {
   return join(workspaceRoot, REVISIONS_DIR, project, REVISIONS_FILE);
 }
 
-/** 讀回某專案累積的修訂；缺檔回空陣列（修訂是可選的）。 */
+/** workspace/revisions/<project>/revisions.archive.json 的路徑（`--prune` 搬過去的地方）。 */
+export function revisionsArchivePath(workspaceRoot: string, project: string): string {
+  return join(workspaceRoot, REVISIONS_DIR, project, REVISIONS_ARCHIVE_FILE);
+}
+
+/**
+ * 讀回某專案累積的修訂；缺檔回空陣列（修訂是可選的）。
+ * **不讀 revisions.archive.json**——在這裡過濾會讓乾跑與上游看到不同輸入（見 ADR-0017）。
+ */
 export function loadProjectRevisions(workspaceRoot: string, project: string): Revision[] {
   return loadRevisionsFile(revisionsPath(workspaceRoot, project));
 }

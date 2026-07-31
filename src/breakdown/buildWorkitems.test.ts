@@ -239,7 +239,7 @@ describe("buildWorkitems：修訂接線", () => {
       workflow,
       frontendItems,
       backendItems,
-      revisions,
+      { revisions },
     );
     expect(w.frontend[0]?.title).toBe("首頁（校正後）");
     expect(w.backend.map((i) => i.id)).toContain("BE-EXTRA-01");
@@ -250,7 +250,7 @@ describe("buildWorkitems：修訂接線", () => {
     const revisions = parseRevisions([
       { target: "workitems", op: "remove", anchor: "FE-01-01", reason: "覺得多餘。" },
     ]);
-    const call = () => buildWorkitems(workflow, frontendItems, backendItems, revisions);
+    const call = () => buildWorkitems(workflow, frontendItems, backendItems, { revisions });
     expect(call).toThrow(WorkitemsConsistencyError);
     expect(call).toThrow(/顆粒度不足/);
   });
@@ -278,10 +278,115 @@ describe("buildWorkitems：修訂接線", () => {
       workflow,
       frontendItems,
       backendItems,
-      revisions,
+      { revisions },
     );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("BE-99");
     expect(w.frontend[1]?.risk).toBe("欄位驗證規則待確認。");
+  });
+});
+
+describe("鏈硬底線與方名／端點把關", () => {
+  const DECLARED = [["mobagel"], ["mobagel", "gary"], ["mobagel", "gary", "leadtek"]];
+  const PARTIES = ["mobagel", "gary", "leadtek"];
+  const CAPS = [
+    {
+      vendor: "gary",
+      endpoint: "GET /models",
+      method: "GET",
+      path: "/models",
+      summary: "",
+      parameters: [],
+      responses: [],
+    },
+  ];
+  const prose = (who: string) => ({
+    title: `${who} 的標題`,
+    scope: `${who} 的範疇。`,
+    acceptance: `${who} 的驗收。`,
+  });
+  const withChain = (partyChain: unknown[]): WorkItemInput[] => [
+    { ...backendItems[0]!, partyChain } as WorkItemInput,
+  ];
+  const build = (backend: WorkItemInput[], revisions: ReturnType<typeof parseRevisions> = []) =>
+    buildWorkitems(workflow, frontendItems, backend, {
+      revisions,
+      declaredChains: DECLARED,
+      parties: PARTIES,
+      capabilities: CAPS,
+    });
+
+  it("方序列不在宣告鏈內時丟錯不落地，訊息列出該筆 id 與實際方序列", () => {
+    const call = () =>
+      build(
+        withChain([
+          { party: "mobagel", vendorEndpoints: [], ...prose("mobagel") },
+          { party: "leadtek", vendorEndpoints: [], ...prose("leadtek") },
+        ]),
+      );
+    expect(call).toThrow(WorkitemsConsistencyError);
+    expect(call).toThrow(/BE-1：mobagel > leadtek/);
+  });
+
+  it("單 leg 也校：字面上的前端直打 leadtek 被擋下", () => {
+    expect(() => build(withChain([{ party: "leadtek", vendorEndpoints: [] }]))).toThrow(
+      /BE-1：leadtek/,
+    );
+  });
+
+  it("宣告鏈上的三段接力合法，sourcingConfirmed 一律 false", () => {
+    const { workitems } = build(
+      withChain([
+        { party: "mobagel", vendorEndpoints: [], ...prose("mobagel") },
+        { party: "gary", vendorEndpoints: [], ...prose("gary") },
+        { party: "leadtek", vendorEndpoints: [], ...prose("leadtek") },
+      ]),
+    );
+    expect(workitems.backend[0]?.partyChain?.map((l) => l.party)).toEqual([
+      "mobagel",
+      "gary",
+      "leadtek",
+    ]);
+    expect(workitems.backend[0]?.sourcingConfirmed).toBe(false);
+  });
+
+  it("[needs-investigation] 這條長度 1 的鏈永遠合法", () => {
+    const { workitems } = build(
+      withChain([{ party: "needs-investigation", vendorEndpoints: [] }]),
+    );
+    expect(workitems.backend[0]?.partyChain?.[0]?.party).toBe("needs-investigation");
+  });
+
+  it("leg 的 vendorEndpoints 帶一條 spec 裡不存在的端點時被擋下並指名該端點", () => {
+    expect(() =>
+      build(
+        withChain([
+          { party: "mobagel", vendorEndpoints: [], ...prose("mobagel") },
+          { party: "gary", vendor: "gary", vendorEndpoints: ["GET /nope"], ...prose("gary") },
+        ]),
+      ),
+    ).toThrow(/GET \/nope/);
+  });
+
+  it("party 為 spec 檔名而非泳道名時被擋下——舊行為已消失", () => {
+    expect(() => build(withChain([{ party: "IDP-service", vendorEndpoints: [] }]))).toThrow(
+      /IDP-service/,
+    );
+  });
+
+  it("set partyChain 在鏈硬底線之前套上：改成非宣告鏈的修訂讓整步丟錯不落地", () => {
+    const legal = withChain([{ party: "mobagel", vendorEndpoints: [] }]);
+    expect(() => build(legal)).not.toThrow();
+    const revisions = parseRevisions([
+      {
+        target: "workitems",
+        op: "set",
+        anchor: "BE-1",
+        field: "partyChain",
+        value: [{ party: "leadtek", vendorEndpoints: [] }],
+        reason: "手動改派。",
+      },
+    ]);
+    expect(() => build(legal, revisions)).toThrow(/BE-1：leadtek/);
   });
 });
