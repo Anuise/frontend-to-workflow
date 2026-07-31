@@ -1,46 +1,38 @@
 # 實作進度（/loop /implement 八張票）
 
-分支：`feat/f2w-workitems-consolidation`（已開，尚未 commit）
+分支：`feat/f2w-workitems-consolidation`
 
-## 下一步（照這個順序做）
+## 狀態：八張票全部完成
 
-1. `npx tsc --noEmit` 一定會炸一片——把所有呼叫點修到綠：
-   - `buildWorkitems(...)` 第四參數改成 `{ revisions }`（`src/revise/crossRerunSurvival.test.ts`、
-     `src/breakdown/buildWorkitems.test.ts`、`f2w-run/run-breakdown*.test.ts`）
-   - `parseVendorSpec(path)` → `parseVendorSpec(path, vendor)`（`src/breakdown/parseVendorSpec.test.ts`）
-   - `src/breakdown-export/inputs.ts` 還在讀 `workitems-sourced.json`／`loadSourcedWorkitems`（T5 要整段刪）
-   - `src/prerequisites.ts`／`src/output.test.ts` 可能還提到 `workitemsSourced`
-2. T5 export 展開、T6 revise、T7 文件、T8 實跑。
+- [x] T1 `parseSwimlaneDiagram`（`src/breakdown/parseSwimlaneDiagram.ts`）
+- [x] T2 契約合併（`src/contracts/workitems.ts` 吸收 `partyChain`；`sourcedWorkitems.ts` 已刪）
+- [x] T3 breakdown 吸收派工（`src/sourcing/` 已刪、具名 options、`checkPartyChains`、`canonicalizeSourcePages`）
+- [x] T4 派工輸入自動發現（`src/breakdown/discoverPartyInputs.ts`；`aidms/` → `leadtek/`）
+- [x] T5 export 一 leg 一列展開（`src/breakdown-export/`）
+- [x] T6 revise：`set partyChain`、leg 標籤當 anchor、`--prune`（`src/revise/prune.ts`）
+- [x] T7 文件與流程重整（`.claude/skills/f2w-sourcing/` 已刪、兩份鏡像一致）
+- [x] T8 實跑 new_0724 ＋ driver 收斂
 
-## 狀態
+## 實跑數字（實測，非估算）
 
-- [x] **T1 parseSwimlaneDiagram** — `src/breakdown/parseSwimlaneDiagram.ts` ＋ `.test.ts`，11 tests 綠。
-      尚未加進 `src/breakdown/index.ts` 的 re-export（T3 一起做）。
-- [x] **T2 契約合併** — `src/contracts/workitems.ts` 已改寫：加 `partyChain`／`sourcingConfirmed`、
-      五條 refine、`partyLegLabel`／`parsePartyLegLabel`／`NEEDS_INVESTIGATION`／`PARTY_LEG_SEPARATOR`。
-      `src/contracts/sourcedWorkitems.ts` 已 `git rm`；`src/output.ts` 已移除 `workitemsSourced`。
-      **未做**：`src/contracts/workitems.test.ts` 補新 refine 的測試。
-- [x] **T3 骨幹** — `src/sourcing/` 整個 `git rm`；`parseVendorSpec.ts`/`.test.ts` `git mv` 進
-      `src/breakdown/`（識別名改由呼叫端傳）；`buildWorkitems` 改具名 `BuildWorkitemsOptions`、
-      新增 `checkPartyChains`（鏈硬底線，跑在套用修訂之後）與 `canonicalizeSourcePages`。
-      **未做**：`dryRun.ts` 改呼叫 `canonicalizeSourcePages`、全 repo 呼叫點修正、單元測試。
-- [x] **T4 骨幹** — 新增 `src/breakdown/discoverPartyInputs.ts`（三態、目錄名即方名、
-      `.$*`／`*.bkp` 依檔名排除、子集檢查、強制回報）；`workspace/spec/new_0724_.../aidms/` 已改名
-      `leadtek/`。**未做**：`discoverPartyInputs.test.ts`。
-- [ ] T5 export 展開成列
-- [ ] T6 revise：`set partyChain`、leg 標籤當 anchor、`--prune`
-- [ ] T7 文件與流程重整（刪 `.claude/skills/f2w-sourcing/`）
-- [ ] T8 實跑 new_0724 ＋ driver 收斂成兩支納版控
+| 項目 | 值 |
+|---|---|
+| `workitems.json` 後端工項 | 60 筆（不拆項、id 不改寫） |
+| partyChain 長度分布 | 21 單 leg／15 兩 leg／24 三 leg |
+| `workitems.xlsx` 後端列數 | 123（99 → 123） |
+| 三段鏈方序列 | 逐字 `["mobagel","gary","leadtek"]`，中繼段 vendor／端點皆空、scope 寫出「gary 需開代理 API」 |
+| 修訂 | 190 → `revisions.json` 111、`revisions.archive.json` 79；孤兒 0；prune 前後套用雜湊相同 |
+| `0714` | 不改一字過新契約（94 前端 ＋ 19 後端），匯出仍一工項一列 |
 
-## 關鍵決策備忘
+## 與票面不符之處（已按實測修正）
 
-- `partyLegLabel(itemId, legIndex, chainLength = legIndex)`：預設值讓票 02 的
-  `partyLegLabel("BE-MODEL-1", 1) === "BE-MODEL-1"` 與票 05 的多 leg `#1/#2/#3` 同時成立。
-- `workItemSchema` 現在是 `ZodEffects`（superRefine），不能再 `.extend()`。
-- T1 排除規則：`rect.y >= 最下方泳道底緣` 即排除（涵蓋 `leg_*` 圖例與 `leg_chain` 宣告 cell，
-  宣告 cell 另由「含①…⑩＋→」的內容規則另外讀）。
+**票 04 的「4 份 spec，gary×3 ＋ leadtek×1」是錯的**：`gary/` 底下四份
+（`AI-security`／`Gateway-API`／`IDP-service`／`Model-Maintenance`）全部帶 `openapi: 3.1.0` 與
+`paths`，加 `leadtek/aidms-openapi.json`（`swagger: 2.0`）共 **5 份、gary×4 ＋ leadtek×1**。
+票上那個數字沿用舊 driver 的 `SPEC_OWNER`（漏列 `IDP-service`）。測試已對齊實測。
 
-## 驗收數字（實測基準，不接受估算）
+## 已知未解（非本次範圍）
 
-後端交付物列數 99 → 123（21 單 leg ＋ 15 兩 leg ＋ 24 三 leg）；`workitems.json` 後端 60 筆不變；
-修訂 190 → 有效 111、archive 79；`0714` 不改一字過新契約。
+- `f2w-run/run-start.test.ts` 失敗：它斷言 `resolveManifest(...).reused === false`，但
+  `output/<project>/manifest.yml` 已存在。**先於本次改動**（該 driver 只在乾淨的 output 下會過），
+  與本次八張票無關。
