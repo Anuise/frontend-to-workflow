@@ -36,8 +36,9 @@ f2w-revise <workflow|workitems>
    - 補工項時**建議用自訂 id**（如 `BE-EXTRA-01`）：後端 id 由 AI 每次重新編號，錨在 AI 生成的後端 id 上的 `set` 重跑後可能變孤兒；自訂 id 的 `upsert` 完全穩定。前端 id 是確定性的（`FE-<頁序>-<該頁工項序>`），錨得住。
 3. **直接 append 落檔** — `appendRevisions(workspaceRoot, project, additions)`
    - **不做事先確認**，直接寫。累積陣列是 append-only 的：同一個欄位改第二次，舊的那筆仍留在檔案裡（看得出調整過幾次、每次的理由），套用時每個作用點只取最後一筆。整份通過驗證才寫，否則丟錯且不落地。
-4. **乾跑驗證** — `dryRunWorkflowRevisions(workflow, all)` 或 `dryRunWorkitemsRevisions(workitems, workflow, all)`
+4. **乾跑驗證** — `dryRunWorkflowRevisions(workflow, all)` 或 `dryRunWorkitemsRevisions(workitems, workflow, all, partyInputs)`
    - 把**落檔後的完整累積修訂集**（不只這次新增的幾筆）套到當前 json 上，跑契約驗證與工項顆粒度底線，收集孤兒清單。**不寫回任何 json。**
+   - workitems 側的第四個參數是派工輸入（`discoverPartyInputs(specRoot, project)` 的結果）。**給了就連鏈硬底線一起跑**——`set partyChain` 把方序列改成不在宣告鏈上的，乾跑當場就紅，不必等下次重跑 f2w-breakdown 才炸。沒給就跳過鏈那一關（沒有宣告鏈可對照）。
 5. **回報**（落檔後回報取代了落檔前確認）
    - 列出這次寫進去的**每一筆全文**：錨、欄位、新值、reason。
    - 接著報乾跑結果：契約驗證過或不過（不過時給完整錯誤訊息）、顆粒度底線有沒有跌破、哪些修訂現在是孤兒（指名錨在哪裡）。

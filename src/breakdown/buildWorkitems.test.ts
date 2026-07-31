@@ -390,3 +390,38 @@ describe("鏈硬底線與方名／端點把關", () => {
     expect(() => build(legal, revisions)).toThrow(/BE-1：leadtek/);
   });
 });
+
+describe("sourcingConfirmed", () => {
+  it("套用修訂之後才寫 false——upsert 進來的後端工項也蓋得到", () => {
+    const chained: WorkItemInput[] = [
+      { ...backendItems[0]!, partyChain: [{ party: "mobagel", vendorEndpoints: [] }] },
+    ];
+    const revisions = parseRevisions([
+      {
+        target: "workitems",
+        op: "upsert",
+        anchor: "BE-EXTRA-01",
+        value: {
+          id: "BE-EXTRA-01",
+          sourcePage: backendItems[0]!.sourcePage,
+          title: "人工補的後端工項",
+          scope: "範疇。",
+          acceptance: "驗收。",
+          dependsOn: [],
+          risk: "",
+          inferred: true,
+          partyChain: [{ party: "mobagel", vendorEndpoints: [] }],
+          sourcingConfirmed: true, // 使用者寫 true，也要被壓回 false
+        },
+        reason: "AI 沒推出來。",
+      },
+    ]);
+    const { workitems } = buildWorkitems(workflow, frontendItems, chained, {
+      revisions,
+      declaredChains: [["mobagel"]],
+      parties: ["mobagel"],
+    });
+    expect(workitems.backend.every((i) => i.sourcingConfirmed === false)).toBe(true);
+    expect(workitems.backend.map((i) => i.id)).toContain("BE-EXTRA-01");
+  });
+});

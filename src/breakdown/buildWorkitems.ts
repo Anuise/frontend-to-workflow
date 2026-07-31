@@ -22,18 +22,25 @@ import { type VendorCapability, endpointsByVendor } from "./parseVendorSpec";
 export type WorkItemInput = Omit<WorkItem, "inferred" | "sourcingConfirmed">;
 
 /**
- * buildWorkitems 的派工輸入，全部可選——沒有派工輸入時整組不給即可（純自建專案）。
- * 收成一個具名物件而不是再加三個位置參數：呼叫點實測 46 次／9 檔，一長串位置參數會失控。
+ * 分工鏈把關要的三樣輸入，全部可選——沒有派工輸入時整組不給即可（純自建專案）。
+ * 三者總是一起旅行（buildWorkitems、checkPartyChains、乾跑都要同一組），所以收成一個型別。
  */
-export interface BuildWorkitemsOptions {
-  /** 人工修訂，存檔前套上（見 ADR-0012）。 */
-  revisions?: readonly Revision[];
+export interface PartyChainInputs {
   /** 權責泳道圖上人寫的 API 呼叫鏈宣告，當鏈硬底線的權威（見 ADR-0014）。 */
   declaredChains?: readonly (readonly string[])[];
   /** 分工方集合，**純由泳道名決定**，不再 ∪ spec 檔名（見 ADR-0018）。 */
   parties?: readonly string[];
   /** 已解析的 Vendor capability，供 leg 的 vendor／vendorEndpoints 參照校驗。 */
   capabilities?: readonly VendorCapability[];
+}
+
+/**
+ * buildWorkitems 的具名輸入：人工修訂加派工輸入。
+ * 收成一個具名物件而不是再加四個位置參數：呼叫點實測 46 次／9 檔，一長串位置參數會失控。
+ */
+export interface BuildWorkitemsOptions extends PartyChainInputs {
+  /** 人工修訂，存檔前套上（見 ADR-0012）。 */
+  revisions?: readonly Revision[];
 }
 
 /** buildWorkitems 的產出：驗過的 workitems，加上套用修訂時要交代的 warning（孤兒修訂）。 */
@@ -119,13 +126,10 @@ export function checkWorkitemsConsistency(workflow: Workflow, workitems: Workite
  * `["needs-investigation"]` 這條長度 1 的鏈永遠合法（多 leg 帶它已由契約層擋下）。
  *
  * 這一步跑在**套用修訂之後**，因為 `set partyChain` 也要被校。違反即丟錯不落地並逐一列名。
+ * 乾跑呼叫的是同一支——否則乾跑報綠、上游重跑才炸，正是 ADR-0012 點名的失效模式。
  */
-export function checkPartyChains(
-  workitems: Workitems,
-  parties: readonly string[],
-  declaredChains: readonly (readonly string[])[],
-  capabilities: readonly VendorCapability[],
-): void {
+export function checkPartyChains(workitems: Workitems, inputs: PartyChainInputs = {}): void {
+  const { parties = [], declaredChains = [], capabilities = [] } = inputs;
   const chained = workitems.backend.filter((i) => i.partyChain !== undefined);
   if (chained.length === 0) return;
 
@@ -219,7 +223,7 @@ export function buildWorkitems(
   backendItems: readonly WorkItemInput[],
   options: BuildWorkitemsOptions = {},
 ): WorkitemsBuild {
-  const { revisions = [], declaredChains = [], parties = [], capabilities = [] } = options;
+  const { revisions = [], ...partyInputs } = options;
 
   // 前端 id 確定性：逐筆等於由 workflow.json 陣列索引推導的值，不由 AI 自由編號。
   // 這是 workitems 側修訂能撐過重拆的前提（見 ADR-0013）；後端 id 刻意不受此約束。
@@ -240,22 +244,27 @@ export function buildWorkitems(
     );
   }
 
-  // inferred 由陣列決定（單一真實來源，不由修訂覆蓋）；sourcingConfirmed 隨 partyChain 一律 false
+  // inferred 由陣列決定（單一真實來源，不由修訂覆蓋）
   const assembled: Workitems = {
     project: workflow.project,
     frontend: frontendItems.map((i) => ({ ...i, inferred: false })),
-    backend: backendItems.map((i) => ({
-      ...i,
-      inferred: true,
-      ...(i.partyChain === undefined ? {} : { sourcingConfirmed: false }),
-    })),
+    backend: backendItems.map((i) => ({ ...i, inferred: true })),
   };
 
   const { result, warnings } = applyWorkitemsRevisions(assembled, revisions);
   checkWorkitemsConsistency(workflow, result); // 含 sourcePage 參照，故下面的查表安全
-  checkPartyChains(result, parties, declaredChains, capabilities); // 跑在套用之後：set partyChain 也要被校
+  checkPartyChains(result, partyInputs); // 跑在套用之後：set partyChain 也要被校
 
-  return { workitems: parseWorkitems(canonicalizeSourcePages(workflow, result)), warnings };
+  // sourcingConfirmed 一律 false，且在**套用修訂之後**才寫——修訂 upsert 進來的後端工項
+  // 也要被蓋上這個旗標，否則「AI 配對要人核」這條會被一筆 upsert 繞過。
+  const confirmed: Workitems = {
+    ...result,
+    backend: result.backend.map((i) =>
+      i.partyChain === undefined ? i : { ...i, sourcingConfirmed: false },
+    ),
+  };
+
+  return { workitems: parseWorkitems(canonicalizeSourcePages(workflow, confirmed)), warnings };
 }
 
 /**

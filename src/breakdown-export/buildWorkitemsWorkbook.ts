@@ -339,7 +339,7 @@ function addOverviewSheet(wb: ExcelJS.Workbook, workitems: Workitems, backendRow
  *   帶 partyChain 時**一個 leg 一列**並加分工欄（派工方／供應商／端點／分工段／來源狀態）。
  */
 export function buildWorkitemsWorkbook(workitems: Workitems): ExcelJS.Workbook {
-  const sourced = hasPartyChains(workitems);
+  const chained = hasPartyChains(workitems);
   const backendRows = expandBackendRows(workitems.backend);
   const wb = new ExcelJS.Workbook();
   addOverviewSheet(wb, workitems, backendRows.length);
@@ -347,7 +347,7 @@ export function buildWorkitemsWorkbook(workitems: Workitems): ExcelJS.Workbook {
   addItemsSheet(
     wb,
     BACKEND_SHEET,
-    sourced ? BACKEND_SOURCED_COLUMNS : BACKEND_COLUMNS,
+    chained ? BACKEND_SOURCED_COLUMNS : BACKEND_COLUMNS,
     backendRows,
     true,
   );

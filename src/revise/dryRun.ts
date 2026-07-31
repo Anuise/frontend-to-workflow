@@ -1,10 +1,16 @@
-import { canonicalizeSourcePages, checkWorkitemsConsistency } from "../breakdown/buildWorkitems";
+import {
+  type PartyChainInputs,
+  canonicalizeSourcePages,
+  checkPartyChains,
+  checkWorkitemsConsistency,
+} from "../breakdown/buildWorkitems";
 import { pageIdKey } from "../contracts/page";
 import { OVERVIEW_ANCHOR, type Revision, type RevisionTarget } from "../contracts/revisions";
 import { type Workflow, parseWorkflow } from "../contracts/workflow";
 import { type Workitems, parsePartyLegLabel, parseWorkitems } from "../contracts/workitems";
 import { checkWorkflowDestinations } from "../describe/buildWorkflow";
-import { actionPoint, applyWorkflowRevisions, applyWorkitemsRevisions } from "./applyRevisions";
+import { applyWorkflowRevisions, applyWorkitemsRevisions, foldRevisions } from "./applyRevisions";
+import { partitionSuperseded } from "./prune";
 
 /**
  * 修訂的可機讀分類計數。
@@ -12,7 +18,8 @@ import { actionPoint, applyWorkflowRevisions, applyWorkitemsRevisions } from "./
  * - `superseded`：同作用點被後寫覆蓋的歷史，唯一**可證明**過時的一類（`--prune` 只搬這一類）。
  * - `noop`：有效但 value 與當前 json 逐字相同。**不可證明過時**——它多半正是「修訂已成功套上」的證據。
  * - `orphan`：錨到當前產出裡不存在的東西。也不可證明**永久**過時（上游改回來它就活了）。
- * `noop` 與 `orphan` 都是 `effective` 的子集。
+ * `noop` 與 `orphan` 都是 `effective` 的子集；`effective` 與 `superseded` 用各自的來源判定
+ * （前者是套用真的用哪幾筆、後者是 `--prune` 真的搬哪幾筆），不保證加總等於總筆數。
  */
 export interface RevisionCounts {
   effective: number;
@@ -41,13 +48,6 @@ export interface DryRunReport {
 /** 深比較用的正規化字串（兩邊都是同一支 schema 出來的形狀，欄序穩定）。 */
 function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
-}
-
-/** 有效修訂集：同作用點只留最後一筆（與 applyRevisions 逐字同一條規則）。 */
-function effectiveOf(revisions: readonly Revision[]): Revision[] {
-  const byPoint = new Map<string, Revision>();
-  for (const r of revisions) byPoint.set(actionPoint(r), r);
-  return [...byPoint.values()];
 }
 
 /** 一筆 workflow 修訂的 value 是否與當前 workflow 逐字相同。 */
@@ -85,10 +85,14 @@ function countRevisions(
   orphans: readonly string[],
   isNoop: (r: Revision) => boolean,
 ): RevisionCounts {
-  const effective = effectiveOf(all);
+  // effective 走 applyRevisions 的摺疊（套用真的用哪幾筆）；
+  // superseded 走 prune 的判定（--prune 真的會搬哪幾筆）。兩者刻意用各自的來源函式，
+  // 否則報告說「1 筆過時」而 --prune 一筆也沒搬。upsert／remove 共用作用點的那幾筆
+  // 兩邊都不算，所以兩個數字不保證加總等於總筆數。
+  const effective = foldRevisions(all);
   return {
     effective: effective.length,
-    superseded: all.length - effective.length,
+    superseded: partitionSuperseded(all).superseded.length,
     noop: effective.filter(isNoop).length,
     orphan: orphans.length,
   };
@@ -118,19 +122,25 @@ export function dryRunWorkflowRevisions(
 /**
  * workitems 側的乾跑：套上修訂、跑參照與顆粒度底線把關與契約，回報結果、孤兒清單與分類計數。
  * 需要 workflow 是因為顆粒度底線 `max(1, 該頁 actions 數)` 的來源是 workflow.json。
- * 呼叫的是與 f2w-breakdown 同一支 applyWorkitemsRevisions、checkWorkitemsConsistency
- * 與 canonicalizeSourcePages——**含套用之後的正規化**，否則兩邊會分岔（ADR-0012:35）。
+ * 呼叫的是與 f2w-breakdown 同一支 applyWorkitemsRevisions、checkWorkitemsConsistency、
+ * checkPartyChains 與 canonicalizeSourcePages——**含套用之後的正規化與鏈硬底線**，
+ * 否則兩邊會分岔（ADR-0012:35）：一筆把方序列改成非宣告鏈的 `set partyChain` 會乾跑報綠、
+ * 下次重跑 f2w-breakdown 才炸。`partyInputs` 不給時不校鏈（沒有宣告鏈可對照）。
  */
 export function dryRunWorkitemsRevisions(
   workitems: Workitems,
   workflow: Workflow,
   revisions: readonly Revision[],
+  partyInputs: PartyChainInputs = {},
 ): DryRunReport {
   const mine = revisions.filter((r) => r.target === "workitems");
   const { result, warnings } = applyWorkitemsRevisions(workitems, revisions);
   const counts = countRevisions(mine, warnings, (r) => isWorkitemsNoop(workitems, r));
   try {
     checkWorkitemsConsistency(workflow, result);
+    // 沒給宣告鏈就沒有東西可對照——這時跳過鏈硬底線，而不是把每筆都判成違規。
+    // f2w-breakdown 那側不跳過：它一定拿得到發現結果，缺宣告鏈本身就是該報的狀況。
+    if (partyInputs.declaredChains?.length) checkPartyChains(result, partyInputs);
     parseWorkitems(canonicalizeSourcePages(workflow, result));
   } catch (e) {
     return {

@@ -5,6 +5,7 @@ import {
   BACKEND_SHEET,
   buildWorkitemsWorkbook,
 } from "../src/breakdown-export";
+import { discoverPartyInputs } from "../src/breakdown";
 import { loadWorkitems } from "../src/contracts/workitems";
 import { contractPath } from "../src/output";
 import {
@@ -23,6 +24,7 @@ const OUTPUT_ROOT = "output";
 const WORKSPACE_ROOT = "workspace";
 const PROJECT = "new_0724_AI六大模組管理平台_桃園智發會_最新版";
 const LEGACY_PROJECT = "AI六大模組管理平台_桃園智發會_0714";
+const SPEC_ROOT = "workspace/spec";
 
 const hash = (v: unknown) => createHash("sha256").update(JSON.stringify(v)).digest("hex");
 
@@ -32,7 +34,9 @@ test("f2w-revise 乾跑：兩側都綠、孤兒 0 筆，分類計數對得上", 
   const workitems = loadWorkitemsForRevise(OUTPUT_ROOT, PROJECT);
 
   const wf = dryRunWorkflowRevisions(workflow, revisions);
-  const wi = dryRunWorkitemsRevisions(workitems, workflow, revisions);
+  // 乾跑也要吃派工輸入，鏈硬底線才會跑在乾跑那側（否則 set partyChain 改壞了要等重跑才炸）。
+  const party = discoverPartyInputs(SPEC_ROOT, PROJECT);
+  const wi = dryRunWorkitemsRevisions(workitems, workflow, revisions, party);
   for (const report of [wf, wi]) {
     console.log(
       `${report.target}：ok=${report.ok} 有效=${report.counts.effective} superseded=${report.counts.superseded} no-op=${report.counts.noop} 孤兒=${report.counts.orphan}`,

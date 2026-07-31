@@ -73,15 +73,18 @@ function listFiles(dir: string): string[] {
   return readdirSync(dir).filter((n) => statSync(join(dir, n)).isFile());
 }
 
-/** spec 目錄名必須是泳道名的子集——否則沒被畫進圖的目錄會憑空變成一個合法的 party。 */
-function checkSpecDirsSubset(specs: readonly DiscoveredSpec[], parties: readonly string[]): void {
+/**
+ * spec 目錄名必須是泳道名的子集——否則沒被畫進圖的目錄會憑空變成一個合法的 party。
+ * 比對的是**所有子目錄名**而不只是有掃到 spec 的那些：一個 `acme/` 就算裡面沒有合法的
+ * OpenAPI 檔，也是使用者以為自己多開了一個分工方，該報。
+ */
+function checkSpecDirsSubset(dirs: readonly string[], parties: readonly string[]): void {
   const partySet = new Set(parties);
-  const dirs = [...new Set(specs.map((s) => s.party))];
   const strays = dirs.filter((p) => !partySet.has(p));
   if (strays.length === 0) return;
   throw new PartyInputDiscoveryError(
     `spec 目錄名必須是泳道名的子集，以下目錄不在泳道名內：${strays.join("、")}` +
-      `（泳道名：${parties.join("、") || "（無）"}；spec 目錄名：${dirs.join("、")}）`,
+      `（泳道名：${parties.join("、") || "（無）"}；spec 目錄名：${dirs.join("、") || "（無）"}）`,
   );
 }
 
@@ -121,7 +124,7 @@ export function discoverPartyInputs(
   if (manual !== undefined) {
     const diagram = parseSwimlaneDiagram(manual.diagramPath);
     const specs = [...(manual.specs ?? [])];
-    checkSpecDirsSubset(specs, diagram.parties);
+    checkSpecDirsSubset([...new Set(specs.map((s) => s.party))], diagram.parties);
     const resolved = {
       specDir,
       diagramPath: manual.diagramPath,
@@ -168,7 +171,8 @@ export function discoverPartyInputs(
 
   // Vendor spec：<方名>/*.json，目錄名即分工方名
   const specs: DiscoveredSpec[] = [];
-  for (const party of listDirs(specDir)) {
+  const partyDirs = listDirs(specDir);
+  for (const party of partyDirs) {
     for (const name of listFiles(join(specDir, party))) {
       const path = join(specDir, party, name);
       if (isBackupName(name)) {
@@ -204,7 +208,7 @@ export function discoverPartyInputs(
 
   const diagram = diagramPath === undefined ? undefined : parseSwimlaneDiagram(diagramPath);
   const parties = diagram?.parties ?? [];
-  checkSpecDirsSubset(specs, parties);
+  checkSpecDirsSubset(partyDirs, parties);
 
   const resolved = {
     specDir,

@@ -307,11 +307,3 @@ export function parseSwimlaneDiagram(diagramPath: string): SwimlaneGraph {
 
   return { parties, nodes, partyEdges, declaredChains, warnings };
 }
-
-/**
- * 取出宣告鏈供下游當鏈硬底線用。
- * 宣告鏈是權威（人寫的、封閉），邊圖只當交叉檢查（結構事實但不封閉）——見 ADR-0014。
- */
-export function derivePartyChains(graph: SwimlaneGraph): string[][] {
-  return graph.declaredChains.map((chain) => [...chain]);
-}

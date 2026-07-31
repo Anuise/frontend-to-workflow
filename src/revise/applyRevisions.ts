@@ -27,7 +27,7 @@ export function actionPoint(r: Revision): string {
  * 摺疊成有效修訂集：每個作用點只留陣列中最後出現的那一筆。
  * 這是唯一在乎順序的一步；摺疊之後套用對排列不敏感。
  */
-function foldRevisions<T extends Revision>(revisions: readonly T[]): T[] {
+export function foldRevisions<T extends Revision>(revisions: readonly T[]): T[] {
   const byPoint = new Map<string, T>();
   for (const r of revisions) byPoint.set(actionPoint(r), r);
   return [...byPoint.values()];
@@ -164,7 +164,14 @@ export function applyWorkitemsRevisions(
       const leg = legs[legIndex - 1]!;
       // 錨在 leg 上時 partyChain 的 value 取第一段當整段取代——那是覆蓋該 leg 的
       // party／vendor／vendorEndpoints 的途徑；title／scope／acceptance 則逐欄覆蓋。
-      if (r.field === "partyChain") legs[legIndex - 1] = { ...r.value[0]! };
+      if (r.field === "partyChain") {
+        if (r.value.length > 1) {
+          warnings.push(
+            `錨在 leg 標籤 ${r.anchor} 的 set partyChain 只取代那一段，多給的 ${r.value.length - 1} 段被忽略——要換整條鏈請錨在工項 id ${itemId} 上。`,
+          );
+        }
+        legs[legIndex - 1] = { ...r.value[0]! };
+      }
       else if (r.field === "title") leg.title = r.value;
       else if (r.field === "scope") leg.scope = r.value;
       else if (r.field === "acceptance") leg.acceptance = r.value;

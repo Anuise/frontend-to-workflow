@@ -129,6 +129,17 @@ describe("discoverPartyInputs（三態與排除）", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
+  it("目錄裡沒有合法 spec 的 acme/ 也算多開一個分工方，一樣報錯", () => {
+    const root = scaffold("demo", (dir) => {
+      writeFileSync(join(dir, "lanes.drawio"), MINI_DIAGRAM, "utf8");
+      mkdirSync(join(dir, "alpha"));
+      writeFileSync(join(dir, "alpha", "good.json"), JSON.stringify(MINI_SPEC), "utf8");
+      mkdirSync(join(dir, "acme")); // 空目錄：使用者以為自己多開了一個方
+    });
+    expect(() => discoverPartyInputs(root, "demo")).toThrow(/acme/);
+    rmSync(root, { recursive: true, force: true });
+  });
+
   it("多於一張泳道圖時報錯，要人指定", () => {
     const root = scaffold("demo", (dir) => {
       writeFileSync(join(dir, "a.drawio"), MINI_DIAGRAM, "utf8");

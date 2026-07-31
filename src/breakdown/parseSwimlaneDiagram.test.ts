@@ -2,11 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  SwimlaneDiagramError,
-  derivePartyChains,
-  parseSwimlaneDiagram,
-} from "./parseSwimlaneDiagram";
+import { SwimlaneDiagramError, parseSwimlaneDiagram } from "./parseSwimlaneDiagram";
 
 // 本 repo 的實檔當 fixture：它同時涵蓋 parent 鏈、掛 root 需幾何補判（l_apiserver／m_front1）、
 // 泳道外節點（n_ext）、純標籤 cell、圖例色塊五種形態。
@@ -65,7 +61,6 @@ describe("parseSwimlaneDiagram（實檔）", () => {
       ["mobagel", "gary"],
       ["mobagel", "gary", "leadtek"],
     ]);
-    expect(derivePartyChains(graph)).toEqual(graph.declaredChains);
   });
 
   it("宣告鏈的每個相鄰跳躍都有邊圖支持，不發交叉檢查 warning", () => {
