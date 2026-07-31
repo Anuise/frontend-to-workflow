@@ -1,8 +1,9 @@
 # T5：交付物層展開——一筆 partyChain 展開成 N 列，gary 中繼列現身
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-31
+Closed: 2026-07-31
 Author: weisshung
 Parent: ../spec.md
 

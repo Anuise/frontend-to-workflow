@@ -1,8 +1,9 @@
 # T7：流程重整與文件——刪 f2w-sourcing、修過期敘述、補修訂生效回路
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-31
+Closed: 2026-07-31
 Author: weisshung
 Parent: ../spec.md
 

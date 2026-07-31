@@ -1,8 +1,9 @@
 # T4：派工輸入自動發現——目錄慣例掃描，強制回報，可手動覆蓋
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-31
+Closed: 2026-07-31
 Author: weisshung
 Parent: ../spec.md
 
