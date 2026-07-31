@@ -17,8 +17,15 @@ const CONFIRMED = {
 
 describe("f2w-start", () => {
   it("保存確認後的 manifest 並安裝相依", { timeout: 1_200_000 }, async () => {
+    // 這支 driver 可重跑：第一次跑時 manifest.yml 還不存在（偵測出候選，且候選必然不是
+    // 使用者確認的那組——偵測看不出 Figma Make 要 pnpm@9／5173）；之後每次跑都是重用既有檔。
+    // 兩種狀態都要有斷言，否則只有乾淨的 output/ 底下才過。
     const before = resolveManifest(OUTPUT_ROOT, PROJECT, PROJECT_DIR);
-    expect(before.reused).toBe(false);
+    if (before.reused) {
+      expect(before.manifest).toEqual(CONFIRMED);
+    } else {
+      expect(before.manifest).not.toEqual(CONFIRMED);
+    }
 
     const path = saveManifest(OUTPUT_ROOT, PROJECT, CONFIRMED);
     expect(loadManifest(path)).toEqual(CONFIRMED);
