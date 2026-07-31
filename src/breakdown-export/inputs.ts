@@ -1,31 +1,17 @@
-import { existsSync } from "node:fs";
-import { type SourcedWorkitems, loadSourcedWorkitems } from "../contracts/sourcedWorkitems";
 import { type Workitems, loadWorkitems } from "../contracts/workitems";
-import { contractPath } from "../output";
 import { requireContract } from "../prerequisites";
 
 /**
- * workitems.xlsx 的來源：無分工的專案是 workitems.json，插過 f2w-sourcing 的是 workitems-sourced.json。
- * 兩者的內容型欄位相同，sourced 版的 backend 每筆多帶分工歸屬欄位。
+ * f2w-breakdown-export 的前置入口：讀回並驗證 workitems.json。
+ * **工項只有一份檔**——分工鏈長在工項身上，交付物才展開成多列（見 ADR-0016），
+ * 所以不再有第二份 sourced 檔要挑，也就沒有兩份檔之間的新鮮度問題。
+ * 缺件即丟 MissingPrerequisiteError，訊息提示先跑 f2w-breakdown。
  */
-export type ExportWorkitems = Workitems | SourcedWorkitems;
-
-/**
- * f2w-breakdown-export 的前置入口：sourced 檔在就優先讀（見 ADR-0004），不在才退回 workitems.json。
- * 兩者都缺即丟 MissingPrerequisiteError，訊息提示先跑 f2w-breakdown。
- * 回傳值是 workitems.xlsx 每列的來源：前端與後端 Work item 的內容型欄位（sourced 版另含分工歸屬）。
- */
-export function loadWorkitemsForExport(outputRoot: string, project: string): ExportWorkitems {
-  const sourcedPath = contractPath(outputRoot, project, "workitemsSourced");
-  if (existsSync(sourcedPath)) {
-    return loadSourcedWorkitems(sourcedPath);
-  }
+export function loadWorkitemsForExport(outputRoot: string, project: string): Workitems {
   return loadWorkitems(requireContract(outputRoot, project, "workitems"));
 }
 
-/** 這批工項是否帶分工歸屬（sourced 版的 backend 每筆都有 assignedParty）。 */
-export function isSourcedWorkitems(
-  workitems: ExportWorkitems,
-): workitems is SourcedWorkitems {
-  return workitems.backend.some((item) => "assignedParty" in item);
+/** 這批工項是否帶分工鏈（全有全無由契約層把關，所以看一筆就夠）。 */
+export function hasPartyChains(workitems: Workitems): boolean {
+  return workitems.backend.some((item) => item.partyChain !== undefined);
 }

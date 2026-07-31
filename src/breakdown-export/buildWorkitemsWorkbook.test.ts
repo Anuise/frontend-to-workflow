@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
-import type { SourcedWorkitems } from "../contracts/sourcedWorkitems";
 import type { Workitems } from "../contracts/workitems";
 import { contractPath } from "../output";
 import {
@@ -154,83 +153,129 @@ describe("buildWorkitemsWorkbook", () => {
   });
 });
 
-// 同一批工項的 sourced 版：一筆配到供應商端點、一筆派給沒給 spec 的方、一筆待查。
-const sourced: SourcedWorkitems = {
+// 同一批工項的帶分工鏈版：一筆單 leg 配到端點、一筆三 leg 接力（含 gary 純通道中繼）、一筆待查。
+const sourced: Workitems = {
   project: "demo",
   frontend: workitems.frontend,
   backend: [
     {
       ...workitems.backend[0]!,
-      assignedParty: "sample-vendor",
-      vendor: "sample-vendor",
-      vendorEndpoints: ["POST /api/v1/profile", "GET /api/v1/profile"],
+      partyChain: [
+        {
+          party: "sample-vendor",
+          vendor: "sample-vendor",
+          vendorEndpoints: ["POST /api/v1/profile", "GET /api/v1/profile"],
+        },
+      ],
       sourcingConfirmed: false,
     },
     {
       ...workitems.backend[0]!,
       id: "BE-2",
       title: "驗證規則",
-      assignedParty: "mobagel",
-      vendorEndpoints: [],
+      partyChain: [
+        {
+          party: "mobagel",
+          vendorEndpoints: [],
+          title: "驗證規則（mobagel 前置閘道）",
+          scope: "mobagel 收前端請求、驗授權後轉發。",
+          acceptance: "前端不直接呼叫下游。",
+        },
+        {
+          party: "gary",
+          vendorEndpoints: [],
+          title: "驗證規則（gary 轉發）",
+          scope: "gary 需開代理 API 轉呼下游，現有 spec 未提供。",
+          acceptance: "轉發保留呼叫端身分。",
+        },
+        {
+          party: "sample-vendor",
+          vendor: "sample-vendor",
+          vendorEndpoints: ["GET /api/v1/profile"],
+          title: "驗證規則（實作）",
+          scope: "下游實作驗證規則本體。",
+          acceptance: "欄位齊全，支援分頁與排序。",
+        },
+      ],
       sourcingConfirmed: false,
     },
     {
       ...workitems.backend[0]!,
-      id: "BE-3-P",
+      id: "BE-3",
       title: "個人資料遮罩層",
-      assignedParty: "needs-investigation",
-      vendorEndpoints: [],
+      partyChain: [{ party: "needs-investigation", vendorEndpoints: [] }],
       sourcingConfirmed: false,
-      originItemId: "BE-3",
     },
   ],
 };
 
-describe("buildWorkitemsWorkbook（讀到 sourced 檔）", () => {
-  it("後端 sheet 在推論狀態後加分工歸屬欄（AC：sourced 後端欄位）", () => {
+describe("buildWorkitemsWorkbook（帶分工鏈）", () => {
+  const header = (ws: import("exceljs").Worksheet) =>
+    (ws.getRow(1).values as unknown[]).slice(1).map(String);
+
+  it("後端 sheet 在推論狀態後加分工欄，並一個 leg 一列（AC：leg 展開）", () => {
     const ws = buildWorkitemsWorkbook(sourced).getWorksheet(BACKEND_SHEET)!;
-    const header = (ws.getRow(1).values as unknown[]).slice(1).map(String);
-    expect(header).toEqual([...BACKEND_SOURCED_COLUMNS]);
+    expect(header(ws)).toEqual([...BACKEND_SOURCED_COLUMNS]);
     // 前 15 欄仍是前端那組、推論狀態仍在第 16 欄
-    expect(header.slice(0, FRONTEND_COLUMNS.length)).toEqual([...FRONTEND_COLUMNS]);
-    expect(header[FRONTEND_COLUMNS.length]).toBe(INFERRED_STATUS_COLUMN);
-    expect(ws.rowCount).toBe(sourced.backend.length + 1);
+    expect(header(ws).slice(0, FRONTEND_COLUMNS.length)).toEqual([...FRONTEND_COLUMNS]);
+    expect(header(ws)[FRONTEND_COLUMNS.length]).toBe(INFERRED_STATUS_COLUMN);
+    // 1（單 leg）＋3（三 leg）＋1（待查）＝5 列，不是 3 列
+    expect(ws.rowCount).toBe(6);
   });
 
-  it("每列填分工歸屬事實，來源狀態一律配對·待確認（AC：來源狀態）", () => {
+  it("列標籤：單 leg 是裸 id，多 leg 是 <id>#<leg序>（AC：列標籤）", () => {
     const ws = buildWorkitemsWorkbook(sourced).getWorksheet(BACKEND_SHEET)!;
-    const header = (ws.getRow(1).values as unknown[]).slice(1).map(String);
-    const cell = (r: number, col: string) =>
-      String(ws.getRow(r).getCell(header.indexOf(col) + 1).value ?? "");
+    const labels = [2, 3, 4, 5, 6].map((r) => String(ws.getRow(r).getCell(1).value));
+    expect(labels).toEqual([
+      workitems.backend[0]!.id,
+      "BE-2#1",
+      "BE-2#2",
+      "BE-2#3",
+      "BE-3",
+    ]);
+  });
 
-    // 配到某份 spec 的端點：派工方／供應商／端點皆填
+  it("每列填該 leg 的分工事實與自己的散文，來源狀態一律配對·待確認（AC：leg 散文）", () => {
+    const ws = buildWorkitemsWorkbook(sourced).getWorksheet(BACKEND_SHEET)!;
+    const cols = header(ws);
+    const cell = (r: number, col: string) =>
+      String(ws.getRow(r).getCell(cols.indexOf(col) + 1).value ?? "");
+
+    // 單 leg 配到端點：派工方／供應商／端點皆填，分工段 1/1
     expect(cell(2, "派工方")).toBe("sample-vendor");
     expect(cell(2, "供應商")).toBe("sample-vendor");
     expect(cell(2, "供應商端點")).toContain("POST /api/v1/profile");
-    // 派給沒給 spec 的方：供應商與端點留空（vendor 與派工脫鉤）
-    expect(cell(3, "派工方")).toBe("mobagel");
-    expect(cell(3, "供應商")).toBe("");
-    expect(cell(3, "供應商端點")).toBe("");
-    // needs-investigation：顯示「待查」、不得攀附供應商
-    expect(cell(4, "派工方")).toBe(NEEDS_INVESTIGATION_LABEL);
+    expect(cell(2, "分工段")).toBe("1/1");
+    // gary 純通道中繼列：供應商與端點留空、分工段 2/3
+    expect(cell(4, "派工方")).toBe("gary");
     expect(cell(4, "供應商")).toBe("");
     expect(cell(4, "供應商端點")).toBe("");
-    // 三列的推論狀態與來源狀態並存（兩個獨立的待確認維度）
+    expect(cell(4, "分工段")).toBe("2/3");
+    // 中繼列的標題／範疇／驗收是自己的，不等於下游那一列
+    for (const col of ["標題", "範疇", "驗收標準"]) {
+      expect(cell(4, col)).not.toBe(cell(5, col));
+    }
+    // needs-investigation：顯示「待查」、不得攀附供應商
+    expect(cell(6, "派工方")).toBe(NEEDS_INVESTIGATION_LABEL);
+    expect(cell(6, "供應商")).toBe("");
+    // 畫押欄逐列留白；推論狀態與來源狀態並存（兩個獨立的待確認維度）
     for (let r = 2; r <= ws.rowCount; r++) {
       expect(cell(r, INFERRED_STATUS_COLUMN)).toBe(INFERRED_STATUS_LABEL);
       expect(cell(r, "來源狀態")).toBe(SOURCING_STATUS_LABEL);
+      for (const col of BLANK_COLUMNS) expect(cell(r, col)).toBe("");
     }
   });
 
-  it("前端 sheet 不受影響、概述補分工圖例（AC：sourced 概述）", () => {
+  it("前端 sheet 不受影響、概述補分工圖例（AC：概述）", () => {
     const wb = buildWorkitemsWorkbook(sourced);
     const feHeader = (wb.getWorksheet(FRONTEND_SHEET)!.getRow(1).values as unknown[]).slice(1);
     expect(feHeader.map(String)).toEqual([...FRONTEND_COLUMNS]);
     const blob = cellTexts(wb.getWorksheet(OVERVIEW_SHEET)!).join("\n");
     expect(blob).toContain(SOURCING_STATUS_LABEL);
-    // 分工圖例列出本批出現的派工方（含待查）
+    // 分工圖例列出本批出現的派工方（含待查）與展開後的列數
     expect(blob).toContain("mobagel");
     expect(blob).toContain(NEEDS_INVESTIGATION_LABEL);
+    expect(blob).toContain("共 5 列");
   });
 });
 

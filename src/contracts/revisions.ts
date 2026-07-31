@@ -3,7 +3,7 @@ import { z } from "zod";
 import { pageIdSchema } from "./page";
 import { validate } from "./validate";
 import { workflowActionSchema } from "./workflow";
-import { workItemSchema } from "./workitems";
+import { partyLegSchema, workItemSchema } from "./workitems";
 
 /**
  * 修訂檔檔名。**不進 CONTRACT_FILES**——那組常數與 contractPath／requireContract／
@@ -11,6 +11,12 @@ import { workItemSchema } from "./workitems";
  * （內容作者是人，見 ADR-0011），另走一組路徑 helper。
  */
 export const REVISIONS_FILE = "revisions.json";
+
+/**
+ * `--prune` 把同作用點被後寫覆蓋的筆搬去這裡。與 revisions.json 同目錄、同陣列格式。
+ * `loadProjectRevisions` **不讀它**——搬走就是不生效，還原路徑是「把那一筆搬回去」。
+ */
+export const REVISIONS_ARCHIVE_FILE = "revisions.archive.json";
 
 /** Overview 沒有 Page 可錨，以這個字面值當錨。 */
 export const OVERVIEW_ANCHOR = "overview";
@@ -79,6 +85,16 @@ const setRevisionSchema = z.discriminatedUnion("field", [
     value: z.array(z.string().min(1)),
     ...annotations,
   }),
+  // 錨在工項 id 上時 value 是整組 leg 陣列；錨在 leg 標籤（`<id>#<leg序>`）上時
+  // 給長度 1 的陣列即取代那一段——這是覆蓋 leg 的 party／vendor／vendorEndpoints 的途徑。
+  // field 這個判別鍵仍然有效（partyChain 與既有九個 field literal 不重疊），
+  // 所以 REVISION_SCHEMA_BY_OP 與前置篩一行未改。
+  z.object({
+    ...workitemsSet,
+    field: z.literal("partyChain"),
+    value: z.array(partyLegSchema).min(1),
+    ...annotations,
+  }),
 ]);
 
 /** 契約層共用訊息：upsert 的 value.id 必須與 anchor 相同。 */
@@ -113,7 +129,7 @@ export type SetRevision = z.infer<typeof setRevisionSchema>;
 export type UpsertRevision = z.infer<typeof upsertRevisionSchema>;
 export type RemoveRevision = z.infer<typeof removeRevisionSchema>;
 
-/** 修訂錨在哪一支產出上。刻意是 union 而非布林——未來支援 workitems-sourced.json 只是多一個值。 */
+/** 修訂錨在哪一支產出上。刻意是 union 而非布林——未來多一支產出可以修訂時只是多一個值。 */
 export type RevisionTarget = "workflow" | "workitems";
 
 /** 一筆錨定在 Page 或 Work item 上的人工校正，覆蓋 AI 產出的單一欄位或整筆工項。 */

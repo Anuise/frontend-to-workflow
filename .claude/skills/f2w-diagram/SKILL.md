@@ -18,9 +18,9 @@ description: frontend-to-workflow 管線中與 f2w-export 並列的分支步，�
 
 **主線邊界不推論**：一條主線＝一個**頂層 Page 分類**（此類專案即側欄模組），`flows[].name` **照抄該分類名、不改字**，`flows` 順序照 `workflow.json` 的頁序。這樣業主看圖就是看側欄，不必把圖上的名字對回系統。分類本身仍由 AI 從 `pages[]` 讀出來（`｜` 階層是 f2w-capture 的命名慣例、不是契約欄位，所以 `src/` 不解析它）。
 
-推論結果**一律先落成 `mainflow.json`**，再由純函式照它畫圖（前例＝`f2w-sourcing` 吃外部事實產出新契約檔）。`src/diagram/` 這一側維持純函式、可斷言：不讀語意、不猜順序，只做版面與一致性硬驗。
+推論結果**一律先落成 `mainflow.json`**，再由純函式照它畫圖（前例＝`f2w-breakdown` 吃外部事實（權責泳道圖與 Vendor spec）產出帶分工鏈的 `workitems.json`）。`src/diagram/` 這一側維持純函式、可斷言：不讀語意、不猜順序，只做版面與一致性硬驗。
 
-推論的痕跡**不上圖面**：不標「推論·待確認」、不標 ⚠。這張圖是給**業主**看的，要乾淨好懂；要查 AI 判斷了什麼就看 `mainflow.json`。（與 ADR-0002 的推論工項、ADR-0004 的配對待確認是不同維度，那兩者不變。）
+推論的痕跡**不上圖面**：不標「推論·待確認」、不標 ⚠。這張圖是給**業主**看的，要乾淨好懂；要查 AI 判斷了什麼就看 `mainflow.json`。（與 ADR-0002 的推論工項、`docs/adr/0007-party-assignment-from-swimlane-diagram.md` 的配對待確認是不同維度，那兩者不變。）
 
 ## 這張圖只畫主幹
 

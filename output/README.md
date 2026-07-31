@@ -1,6 +1,6 @@
 # output/ — 管線產出放這裡
 
-所有跨步驟狀態與交付物一律落在 `output/<project>/`（`<project>` = `workspace/` 底下那個子資料夾名）。這裡的內容**不被 git 追蹤**（只有本 README 追蹤）。
+所有跨步驟狀態與交付物一律落在 `output/<project>/`（`<project>` = `workspace/frontend/` 底下那個子資料夾名）。這裡的內容**不被 git 追蹤**（只有本 README 追蹤）。
 
 ## 目錄長相
 
@@ -14,8 +14,7 @@ output/
     workflow.xlsx               # f2w-export           交付物：工作流程 Workbook
     mainflow.json               # f2w-diagram（分支）   Main flow（主線）推論交接檔
     mainflow.drawio             # f2w-diagram（分支）   交付物：Main flow diagram（draw.io）
-    workitems.json              # f2w-breakdown        前端／後端 Work item
-    workitems-sourced.json      # f2w-sourcing（可選）  貼上 Sourcing decision 的完整副本
+    workitems.json              # f2w-breakdown        前端／後端 Work item（後端可帶 Party chain）
     workitems.xlsx              # f2w-breakdown-export 交付物：工項範本（畫押欄留白）
 ```
 
@@ -28,16 +27,15 @@ output/
 | 3 | `f2w-describe` | `pages.json`、`screenshots/` | `workflow.json` |
 | 4 | `f2w-export` | `workflow.json`、`pages.json`、`screenshots/` | `workflow.xlsx` |
 | 分支（與步 4 併行） | `f2w-diagram` | `workflow.json` | `mainflow.json`、`mainflow.drawio` |
-| 5 | `f2w-breakdown` | `workflow.json` | `workitems.json` |
-| 5.5（可選） | `f2w-sourcing` | `workitems.json` ＋ Vendor spec | `workitems-sourced.json` |
-| 6 | `f2w-breakdown-export` | `workitems-sourced.json`（在就讀）否則 `workitems.json` | `workitems.xlsx` |
+| 5 | `f2w-breakdown` | `workflow.json`；有派工時另掃 `workspace/spec/<project>/` | `workitems.json` |
+| 6 | `f2w-breakdown-export` | `workitems.json` | `workitems.xlsx` |
 
 缺前置檔時該步會中止，並提示先跑產出那一檔的步驟。
 
 ## 可以手改的 / 不要手改的
 
-- **宣告式逃生口，可手改**：`manifest.yml`、`pages.json`、`workflow.json`、`mainflow.json`、`workitems.json`、`workitems-sourced.json`。自動偵測／描述／主線推論／拆項不完美時直接改檔再重跑後續步驟，重跑會尊重手改值（`mainflow.json` 已存在時 `f2w-diagram` 不重推論，直接照手改後的版本畫）。
+- **宣告式逃生口，可手改**：`manifest.yml`、`pages.json`、`workflow.json`、`mainflow.json`、`workitems.json`。自動偵測／描述／主線推論／拆項與派工不完美時直接改檔再重跑後續步驟（**派錯方直接改 `workitems.json` 的 `partyChain`，零重跑**），重跑會尊重手改值（`mainflow.json` 已存在時 `f2w-diagram` 不重推論，直接照手改後的版本畫）。
 - **交付物**：`workflow.xlsx` 不預期手改，內容不對回頭改上游 json 再重跑 `f2w-export`。`mainflow.drawio` 同理（內容不對改 `mainflow.json` 再重跑；重跑直接覆寫）：可在 draw.io 圖形化調版面，但要保留手調排版請自行另存副本。
-- **`workitems.xlsx` 是可被重跑覆蓋的範本**：要填 RACI／估時／優先級／簽核／狀態，請**另存一份工作副本**再填。重跑只覆蓋範本、不動工作副本。
+- **`workitems.xlsx` 是可被重跑覆蓋的範本**：要填 RACI／估時／優先級／簽核／狀態，請**另存一份工作副本**再填。重跑只覆蓋範本、不動工作副本。帶 Party chain 時後端 sheet **一個 leg 一列**，列標籤是 `<工項id>#<leg序>`。
 
 詞彙定義見 [CONTEXT.md](../CONTEXT.md)。

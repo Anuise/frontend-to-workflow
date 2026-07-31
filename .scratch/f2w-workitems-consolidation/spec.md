@@ -1,8 +1,9 @@
 # f2w 中段收斂：工項只有一份檔，分工鏈長在工項身上
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-31
+Closed: 2026-07-31
 Author: weisshung
 
 ## Problem Statement
@@ -122,11 +123,11 @@ Author: weisshung
 
 ## Implementation issues
 
-- [01-parse-swimlane-diagram.md](issues/01-parse-swimlane-diagram.md) — 確定性泳道圖解析器（open）
-- [02-workitem-carries-party-chain.md](issues/02-workitem-carries-party-chain.md) — 契約合併：工項帶 partyChain（open）
-- [03-breakdown-absorbs-party-assignment.md](issues/03-breakdown-absorbs-party-assignment.md) — f2w-breakdown 吸收派工與鏈硬底線（open）
-- [04-discover-party-inputs.md](issues/04-discover-party-inputs.md) — 派工輸入自動發現（open）
-- [05-export-expands-party-chain.md](issues/05-export-expands-party-chain.md) — 交付物層展開成列（open）
-- [06-revise-party-chain-and-prune.md](issues/06-revise-party-chain-and-prune.md) — partyChain 可修訂與 --prune（open）
-- [07-docs-and-flow-reshape.md](issues/07-docs-and-flow-reshape.md) — 流程重整與文件（open）
-- [08-end-to-end-and-migration.md](issues/08-end-to-end-and-migration.md) — 實跑驗收與遷移（open）
+- [01-parse-swimlane-diagram.md](issues/01-parse-swimlane-diagram.md) — 確定性泳道圖解析器（closed）
+- [02-workitem-carries-party-chain.md](issues/02-workitem-carries-party-chain.md) — 契約合併：工項帶 partyChain（closed）
+- [03-breakdown-absorbs-party-assignment.md](issues/03-breakdown-absorbs-party-assignment.md) — f2w-breakdown 吸收派工與鏈硬底線（closed）
+- [04-discover-party-inputs.md](issues/04-discover-party-inputs.md) — 派工輸入自動發現（closed）
+- [05-export-expands-party-chain.md](issues/05-export-expands-party-chain.md) — 交付物層展開成列（closed）
+- [06-revise-party-chain-and-prune.md](issues/06-revise-party-chain-and-prune.md) — partyChain 可修訂與 --prune（closed）
+- [07-docs-and-flow-reshape.md](issues/07-docs-and-flow-reshape.md) — 流程重整與文件（closed）
+- [08-end-to-end-and-migration.md](issues/08-end-to-end-and-migration.md) — 實跑驗收與遷移（closed）

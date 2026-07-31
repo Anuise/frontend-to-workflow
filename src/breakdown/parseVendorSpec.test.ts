@@ -25,16 +25,16 @@ const spec = {
 };
 
 function writeSpec(name: string, body: unknown): { root: string; path: string } {
-  const root = mkdtempSync(join(tmpdir(), "f2w-sourcing-spec-"));
+  const root = mkdtempSync(join(tmpdir(), "f2w-vendor-spec-"));
   const path = join(root, name);
   writeFileSync(path, JSON.stringify(body), "utf8");
   return { root, path };
 }
 
 describe("parseVendorSpec", () => {
-  it("把 spec 解析成 endpoint／參數／回應 schema，供應商識別名取檔名", () => {
+  it("把 spec 解析成 endpoint／參數／回應 schema，供應商識別名由呼叫端傳入", () => {
     const { root, path } = writeSpec("Gateway-API.json", spec);
-    const caps = parseVendorSpec(path);
+    const caps = parseVendorSpec(path, "Gateway-API");
 
     expect(caps.map((c) => c.endpoint)).toEqual(["GET /models", "POST /models", "GET /health"]);
     const list = caps[0]!;
@@ -53,18 +53,18 @@ describe("parseVendorSpec", () => {
 
   it("非合法 spec（缺版本欄位、缺 paths、無端點、壞 JSON）一律丟 VendorSpecError", () => {
     const noVersion = writeSpec("a.json", { paths: {} });
-    expect(() => parseVendorSpec(noVersion.path)).toThrow(VendorSpecError);
+    expect(() => parseVendorSpec(noVersion.path, "a")).toThrow(VendorSpecError);
 
     const noPaths = writeSpec("b.json", { openapi: "3.0.0" });
-    expect(() => parseVendorSpec(noPaths.path)).toThrow(/缺 paths/);
+    expect(() => parseVendorSpec(noPaths.path, "b")).toThrow(/缺 paths/);
 
     const noEndpoint = writeSpec("c.json", { openapi: "3.0.0", paths: {} });
-    expect(() => parseVendorSpec(noEndpoint.path)).toThrow(/沒有任何可用端點/);
+    expect(() => parseVendorSpec(noEndpoint.path, "c")).toThrow(/沒有任何可用端點/);
 
-    const broken = mkdtempSync(join(tmpdir(), "f2w-sourcing-spec-"));
+    const broken = mkdtempSync(join(tmpdir(), "f2w-vendor-spec-"));
     const brokenPath = join(broken, "d.json");
     writeFileSync(brokenPath, "{ not json", "utf8");
-    expect(() => parseVendorSpec(brokenPath)).toThrow(VendorSpecError);
+    expect(() => parseVendorSpec(brokenPath, "d")).toThrow(VendorSpecError);
 
     for (const r of [noVersion.root, noPaths.root, noEndpoint.root, broken]) {
       rmSync(r, { recursive: true, force: true });
@@ -75,7 +75,7 @@ describe("parseVendorSpec", () => {
 describe("endpointsByVendor", () => {
   it("以供應商分組成端點集合", () => {
     const { root, path } = writeSpec("IDP-service.json", spec);
-    const byVendor = endpointsByVendor(parseVendorSpec(path));
+    const byVendor = endpointsByVendor(parseVendorSpec(path, "IDP-service"));
 
     expect([...byVendor.keys()]).toEqual(["IDP-service"]);
     expect(byVendor.get("IDP-service")?.has("POST /models")).toBe(true);

@@ -1,8 +1,9 @@
 # T2：契約合併——工項帶 partyChain，workitems-sourced.json 契約退場
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-31
+Closed: 2026-07-31
 Author: weisshung
 Parent: ../spec.md
 

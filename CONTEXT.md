@@ -83,33 +83,41 @@ _Avoid_: 修訂清單（那是含歷史的完整陣列）, patch set, diff
 ## 分工歸屬（Sourcing）
 
 **權責泳道圖（Responsibility swimlane diagram）**:
-人畫的 draw.io 泳道圖：泳道＝分工方（Party）、格＝該方負責的元件、邊＝呼叫／資料流。**平台級共用文件、可跨 project**，是 `f2w-sourcing` 派工的主要依據；AI 直接讀圖推斷（不經確定性解析器），錯配靠人核兜底。
-_Avoid_: Main flow diagram（那是 f2w-diagram 的業主向產物，明文不含泳道）, 流程圖（泛稱）, BPMN 圖
+人畫的 draw.io 泳道圖：泳道＝分工方（Party）、格＝該方負責的元件、邊＝呼叫／資料流。**逐 project 一份**，放在 `workspace/spec/<project>/` 的根，由 `f2w-breakdown` 自動掃出。泳道名、節點歸屬、方層跳躍與**宣告鏈**由確定性解析器 `parseSwimlaneDiagram` 讀出（見 `docs/adr/0014-swimlane-diagram-read-by-deterministic-parser.md`）；「哪一格對應哪個工項」仍是 AI 推論，錯配靠人核兜底。
+_Avoid_: Main flow diagram（那是 f2w-diagram 的業主向產物，明文不含泳道）, 流程圖（泛稱）, BPMN 圖, 平台級共用文件（已改為逐 project）
+
+**宣告鏈（Declared chain）**:
+人寫在權責泳道圖上的一句話，宣告 API 呼叫鏈只有哪幾種（如「① frontend → mobagel　② frontend → mobagel → gary」）。解析器依序號切鏈、按箭頭切 token、丟掉不是泳道名的 token。**它是鏈硬底線的權威**：每筆後端工項的方序列必須逐字等於其中一條，否則 `f2w-breakdown` 整步丟錯不落地。邊圖只當交叉檢查——邊圖是結構事實但不封閉（外部呼叫端可以直打中段），宣告文字封閉但是人手寫的、會過期，所以相鄰跳躍在邊圖上找不到支持時只發 warning、不中止。
+_Avoid_: 呼叫鏈規則（泛稱）, partyEdges（那是從邊算出的方層跳躍，不是宣告）
 
 **Party（分工方）**:
-權責泳道圖中一條泳道代表的責任單位；自家與外部廠商一視同仁。分工方名集合 = 泳道名 ∪ Vendor spec 檔名。
+權責泳道圖中一條泳道代表的責任單位；自家與外部廠商一視同仁。**分工方名集合純由泳道名決定**——spec 目錄名必須是泳道名的子集，沒被畫進圖的目錄不會憑空變成一個合法的方。
 _Avoid_: vendor（保留給「有提供 Vendor spec 的分工方」）, 廠商（泛稱）, 團隊
 
 **Vendor（供應商）**:
-有提供 Vendor spec（OpenAPI）的分工方；以其 spec 檔名（去副檔名）為識別名。
-_Avoid_: 廠商, supplier, third-party（泛稱）
+有提供 Vendor spec（OpenAPI）的分工方；識別名即它的 spec **目錄名**（`workspace/spec/<project>/<方名>/`），與泳道名相同。
+_Avoid_: 廠商, supplier, third-party（泛稱）, spec 檔名（已不再是識別名）
 
 **Vendor spec（供應商規格）**:
-單一 Vendor 的 OpenAPI／Swagger 契約檔；由人提供、觸發 `f2w-sourcing` 時指定路徑（可選，0..n 份、一檔一家；與權責泳道圖至少給一種）。是派工的輔助證據。
+單一 Vendor 的 OpenAPI／Swagger 契約檔，放在 `workspace/spec/<project>/<方名>/*.json`（可選，一方 0..n 份，同一方多份會合併成該方一份 capability 集合）。由 `f2w-breakdown` 依目錄慣例自動發現，不用打路徑。是派工的輔助證據。
 _Avoid_: API doc, 文件（泛稱）
 
 **Vendor capability（供應商能力）**:
 從 Vendor spec **確定性解析**出的單一可呼叫端點（endpoint ＋ 參數 ＋ 回應 schema）；是 `vendorEndpoints` 配對的對象。機器解析而來，非 AI 抽取。
 _Avoid_: endpoint（單指 URL 路徑時可用）, feature
 
+**Party chain（分工鏈）**:
+一筆後端 Work item 的分工歸屬，形狀是一個 **leg** 陣列：單方做完就一個 leg，多方接力就多個 leg（依序）。**工項不拆項、id 不改寫**——拆項會改寫 id、讓使用者照交付物寫下的修訂錨不到東西（見 `docs/adr/0016-work-item-carries-party-chain.md`）。多列只在 `workitems.xlsx` 展開。方序列必須逐字等於宣告鏈之一。
+_Avoid_: 跨方接力拆項（已廢做法）, originItemId（已廢欄位）, 分工歸屬（單筆時可用，但別拿來指整條鏈）
+
+**leg（分工段）**:
+Party chain 上的一段：`{ party, vendor?, vendorEndpoints, title?, scope?, acceptance? }`。**多 leg 時 `title`／`scope`／`acceptance` 三欄必填且各 leg 各寫**——交付物上一個 leg 一列、一列一個 A，中繼那一列若顯示下游方的活與下游方的驗收，該方就無從畫押；單 leg 可缺，缺時繼承工項層。純通道的中繼段 `vendor`／`vendorEndpoints` 留空是合法的。交付物列標籤由 (工項 id, leg 序) 確定性推導：單 leg 是裸 id、多 leg 是 `<工項id>#<leg序>`，**它是合法的修訂錨**。
+_Avoid_: part（舊的拆項語）, 子工項（leg 不是獨立工項，沒有自己的 id）
+
 **Party assignment（分工歸屬）**:
-為單一後端 Work item 派定「誰做」：一個分工方名，或 **needs-investigation**（從圖與 spec 都判不出誰做、待查）。一筆工項橫跨兩方時拆成多筆**跨方接力**（`dependsOn` 串、`originItemId` 溯源）。由 `f2w-sourcing` 產出。
+一個 leg 上的「誰做」：一個分工方名，或 **needs-investigation**（從圖與 spec 都判不出誰做、待查）。`needs-investigation` 是長度 1 的鏈、不得出現在多 leg 鏈裡。由 `f2w-breakdown` 產出。
 _Avoid_: Sourcing decision／來源決策（四桶舊語）, vendor-direct, vendor-adapted, self-built（已廢值）, 分派（泛稱）
 
 **配對·待確認（Sourcing confirmation）**:
-Party assignment 由 AI 語意配對而來，一律標 `sourcingConfirmed: false`；與 Inferred work item 的「推論·待確認」是**兩個獨立維度**——一個問工項存不存在、一個問派的方與配的 API 對不對，開工前各自要人核。
+Party chain 由 AI 語意配對而來，一律標 `sourcingConfirmed: false`；與 Inferred work item 的「推論·待確認」是**兩個獨立維度**——一個問工項存不存在、一個問派的方與配的 API 對不對，開工前各自要人核。
 _Avoid_: 待驗證（泛稱）
-
-**Sourced work breakdown（來源劃分）**:
-`f2w-sourcing` 產出的 `workitems-sourced.json`：把 Work breakdown 的後端工項貼上 Party assignment、並把跨方接力的工項拆成多筆後的**完整副本**（前端原封複製）。是可選插入步的產物，`f2w-breakdown-export` 有它就讀它。
-_Avoid_: 加工工項清單（泛稱）

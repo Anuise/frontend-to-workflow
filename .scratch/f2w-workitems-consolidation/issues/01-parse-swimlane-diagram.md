@@ -1,8 +1,9 @@
 # T1：確定性泳道圖解析器（泳道名、節點歸屬、方層跳躍、宣告鏈）
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-31
+Closed: 2026-07-31
 Author: weisshung
 Parent: ../spec.md
 

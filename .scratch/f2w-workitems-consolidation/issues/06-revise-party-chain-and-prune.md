@@ -1,8 +1,9 @@
 # T6：f2w-revise——partyChain 可修訂、leg 標籤可當錨、--prune 只搬可證明的一類
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-31
+Closed: 2026-07-31
 Author: weisshung
 Parent: ../spec.md
 

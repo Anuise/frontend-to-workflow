@@ -1,8 +1,9 @@
 # T8：實跑驗收與遷移——0724 走完新形狀，四份 output 各自到位，driver 收斂
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-31
+Closed: 2026-07-31
 Author: weisshung
 Parent: ../spec.md
 

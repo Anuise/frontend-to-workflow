@@ -5,7 +5,7 @@ description: frontend-to-workflow 管線的第二步。讀取執行中的 Projec
 
 # f2w-capture：列舉 Page 並截圖
 
-管線四步的第二步。讀取 f2w-start 保存的 **Manifest**（`output/<project>/manifest.yml`，指向執行中的 **Project**），把整個純前端**列舉出所有 Page**（一條正規化路由，或某路由底下的一個 tab 狀態），逐 Page 截圖，產出 `output/<project>/pages.json` 與 `output/<project>/screenshots/`，交給後續 `f2w-describe`。
+管線的第二步。讀取 f2w-start 保存的 **Manifest**（`output/<project>/manifest.yml`，指向執行中的 **Project**），把整個純前端**列舉出所有 Page**（一條正規化路由，或某路由底下的一個 tab 狀態），逐 Page 截圖，產出 `output/<project>/pages.json` 與 `output/<project>/screenshots/`，交給後續 `f2w-describe`。
 
 前置：`output/<project>/manifest.yml`（由 f2w-start 產出）。缺檔即中止並提示先跑 f2w-start。
 產出：`output/<project>/pages.json`、`output/<project>/screenshots/`。

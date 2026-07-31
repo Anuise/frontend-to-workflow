@@ -333,3 +333,107 @@ describe("applyWorkitemsRevisions", () => {
     expect(workitems.frontend[0]?.title).toBe("首頁");
   });
 });
+
+describe("applyWorkitemsRevisions（partyChain 與 leg 錨）", () => {
+  const prose = (who: string) => ({
+    title: `${who} 的標題`,
+    scope: `${who} 的範疇。`,
+    acceptance: `${who} 的驗收。`,
+  });
+  const chained: Workitems = parseWorkitems({
+    ...workitems,
+    backend: workitems.backend.map((i, index) =>
+      index === 0
+        ? {
+            ...i,
+            partyChain: [
+              { party: "mobagel", vendorEndpoints: [], ...prose("mobagel") },
+              { party: "gary", vendorEndpoints: [], ...prose("gary") },
+              { party: "leadtek", vendorEndpoints: [], ...prose("leadtek") },
+            ],
+            sourcingConfirmed: false,
+          }
+        : {
+            ...i,
+            partyChain: [{ party: "mobagel", vendorEndpoints: [] }],
+            sourcingConfirmed: false,
+          },
+    ),
+  });
+  const anchorId = chained.backend[0]!.id;
+
+  const setPartyChain = (anchor: string, value: unknown) => ({
+    target: "workitems",
+    op: "set",
+    anchor,
+    field: "partyChain",
+    value,
+    reason: "派錯方。",
+  });
+
+  it("set partyChain 真的套上（防止那條 if／else 分支靜默 no-op）", () => {
+    const { result } = applyWorkitemsRevisions(
+      chained,
+      parseRevisions([
+        setPartyChain(anchorId, [{ party: "needs-investigation", vendorEndpoints: [] }]),
+      ]),
+    );
+    expect(result.backend[0]?.partyChain).toEqual([
+      { party: "needs-investigation", vendorEndpoints: [] },
+    ]);
+  });
+
+  it("leg 錨的 set 只改該 leg，其餘 leg 與工項層逐字不變", () => {
+    const { result, warnings } = applyWorkitemsRevisions(
+      chained,
+      parseRevisions([
+        {
+          target: "workitems",
+          op: "set",
+          anchor: `${anchorId}#2`,
+          field: "scope",
+          value: "gary 需開代理 API 轉呼 leadtek。",
+          reason: "中繼段講清楚。",
+        },
+      ]),
+    );
+    const chain = result.backend[0]!.partyChain!;
+    expect(chain[1]?.scope).toBe("gary 需開代理 API 轉呼 leadtek。");
+    expect(chain[0]).toEqual(chained.backend[0]!.partyChain![0]);
+    expect(chain[2]).toEqual(chained.backend[0]!.partyChain![2]);
+    expect(result.backend[0]?.scope).toBe(chained.backend[0]?.scope);
+    expect(warnings).toEqual([]);
+  });
+
+  it("leg 錨的 set partyChain 取代整段——覆蓋 party／vendor／端點的途徑", () => {
+    const { result } = applyWorkitemsRevisions(
+      chained,
+      parseRevisions([
+        setPartyChain(`${anchorId}#2`, [
+          { party: "leadtek", vendorEndpoints: [], ...prose("換手的 leadtek") },
+        ]),
+      ]),
+    );
+    expect(result.backend[0]?.partyChain?.[1]?.party).toBe("leadtek");
+    expect(result.backend[0]?.partyChain).toHaveLength(3);
+  });
+
+  it("leg 序超出鏈長時發孤兒 warning，不中止、不自動清除", () => {
+    const { result, warnings } = applyWorkitemsRevisions(
+      chained,
+      parseRevisions([
+        {
+          target: "workitems",
+          op: "set",
+          anchor: `${anchorId}#9`,
+          field: "title",
+          value: "不存在的那一段",
+          reason: "抄錯列。",
+        },
+      ]),
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(`${anchorId}#9`);
+    expect(result.backend[0]?.partyChain).toEqual(chained.backend[0]?.partyChain);
+  });
+});

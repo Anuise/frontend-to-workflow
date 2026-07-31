@@ -139,8 +139,8 @@ describe("跨重跑存活（workflow）", () => {
 describe("跨重跑存活（workitems）", () => {
   const wfBefore = buildWorkflow(pagesBefore, "Overview。", describePages(pagesBefore, "一")).workflow;
   const wfAfter = buildWorkflow(pagesAfter, "Overview。", describePages(pagesAfter, "二")).workflow;
-  const before = buildWorkitems(wfBefore, frontendFor(wfBefore, "一"), [], workitemsRevisions);
-  const after = buildWorkitems(wfAfter, frontendFor(wfAfter, "二"), [], workitemsRevisions);
+  const before = buildWorkitems(wfBefore, frontendFor(wfBefore, "一"), [], { revisions: workitemsRevisions });
+  const after = buildWorkitems(wfAfter, frontendFor(wfAfter, "二"), [], { revisions: workitemsRevisions });
 
   it("重拆後前端 id 不動，錨在 id 上的 set 在兩份上結果相同", () => {
     expect(before.workitems.frontend.map((i) => i.id)).toEqual(["FE-01-01", "FE-02-01"]);
@@ -179,7 +179,7 @@ describe("上游真的變了時的殘餘風險（已知取捨，不是 bug）", 
       wf,
       frontendFor(wf, "三"),
       [],
-      workitemsRevisions,
+      { revisions: workitemsRevisions },
     );
     // FE-02-01 現在是插進來那頁的工項，錨在該 id 的 set 就落在它身上——
     // 不會發 warning（那個 id 確實存在），而 /settings（個人資料）退到 FE-03-01、拿回 AI 的新文字。

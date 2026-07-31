@@ -1,8 +1,9 @@
 # T3：f2w-breakdown 吸收派工——鏈硬底線，並把套用後的正規化收成乾跑共用
 
-State: open
+State: closed
 Status: ready-for-agent
 Created: 2026-07-31
+Closed: 2026-07-31
 Author: weisshung
 Parent: ../spec.md
 

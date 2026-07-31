@@ -324,7 +324,7 @@ test("f2w-breakdown 產出 workitems.json（逐操作前端＋推論後端）", 
   const workflow = loadWorkflowForBreakdown(OUTPUT_ROOT, PROJECT);
   // 存檔前套上人工修訂（缺修訂檔時是空陣列）；孤兒修訂只發 warning、不中止。
   const revisions = loadProjectRevisions(WORKSPACE_ROOT, PROJECT);
-  const { workitems, warnings } = buildWorkitems(workflow, frontend, backend, revisions);
+  const { workitems, warnings } = buildWorkitems(workflow, frontend, backend, { revisions });
   for (const w of warnings) console.warn(w);
 
   // 顆粒度自檢：前端工項總數 ≥ 各頁可執行操作數之和（逐操作硬底線）。

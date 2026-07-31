@@ -1,12 +1,36 @@
 import { expect, test } from "vitest";
-import { buildWorkitems, loadWorkflowForBreakdown, saveWorkitems } from "../src/breakdown";
+import {
+  buildWorkitems,
+  discoverPartyInputs,
+  loadWorkflowForBreakdown,
+  saveWorkitems,
+  WorkitemsConsistencyError,
+} from "../src/breakdown";
 import type { WorkItemInput } from "../src/breakdown";
+import {
+  BACKEND_SHEET,
+  BACKEND_SOURCED_COLUMNS,
+  FRONTEND_SHEET,
+  OVERVIEW_SHEET,
+  SOURCING_STATUS_LABEL,
+  buildWorkitemsWorkbook,
+  hasPartyChains,
+  loadWorkitemsForExport,
+  saveWorkitemsWorkbook,
+} from "../src/breakdown-export";
+import { NEEDS_INVESTIGATION, type PartyLeg } from "../src/contracts/workitems";
 import { loadProjectRevisions } from "../src/revise";
 
-// f2w-breakdown 驅動：讀回 workflow.json，逐操作產出前端工項＋推論後端工項，
-// 經 buildWorkitems 五重把關後 saveWorkitems 落地 workitems.json。
+// new_0724 實跑驅動：一支跑完 f2w-breakdown（含派工）＋ f2w-breakdown-export。
+// 讀回 workflow.json，逐操作產出前端工項＋推論後端工項與分工鏈，經 buildWorkitems
+// 把關後落地 workitems.json，再組出 workitems.xlsx。
+//
+// 本檔**只驅動、不扛政策**：分工方名與宣告鏈都來自 workspace/spec/<project>/ 的目錄慣例
+// 與泳道圖，driver 不再有 SPEC_OWNER 那種政策常數；下面的 POLICY 只保留「這筆工項的
+// 目標方與端點」，鏈的形狀交給宣告鏈硬底線把關。
 const OUTPUT_ROOT = "output";
 const WORKSPACE_ROOT = "workspace";
+const SPEC_ROOT = "workspace/spec";
 const PROJECT = "new_0724_AI六大模組管理平台_桃園智發會_最新版";
 
 /** 單筆工項的內容型欄位（id／sourcePage／inferred 由產生器補齊）。 */
@@ -384,13 +408,268 @@ const BACKEND: Be[] = [
   { id: "BE-X-3", page: "SSO｜算力申請與審核｜管理者｜審核｜模型服務審核", t: "TPM／RPM 限流執行", s: "依核定額度在推論入口執行 Token 與請求數限流。", a: "超額請求被拒並回可辨識錯誤，用量統計與追蹤日誌一致。", d: ["BE-REVIEW-2"] },
 ];
 
+/**
+ * 逐後端工項的下游落點政策：
+ *  - "self"：mobagel 自己做完（含對外部系統的整合，如刑事局 SSO），單 leg。
+ *  - "investigate"：泳道圖與四份 spec 都判不出誰做，待查（不派給 gary／leadtek）。
+ *  - { party, endpoints }：真正做事的是 gary 或 leadtek，鏈的形狀由宣告鏈硬底線決定。
+ * **不寫鏈**——鏈是宣告在泳道圖上的，driver 只說目標方與端點。
+ */
+type Policy = "self" | "investigate" | { party: string; endpoints: string[] };
+
+const POLICY: Record<string, Policy> = {
+  // 身分與權限：業主定調權限一律只有 mobagel 實作，gary 與 leadtek 都不管權限。
+  "BE-AUTH-1": "self", // SSO 單一簽入整合＝mobagel 對接外部刑事局 SSO（泳道 m_back1 → m_sso）
+  "BE-AUTH-2": "self",
+  "BE-AUTH-3": "self",
+  "BE-AUTH-4": "self",
+
+  // 模型倉庫。
+  "BE-MODEL-1": { party: "leadtek", endpoints: ["GET /api/v1/models"] },
+  "BE-MODEL-2": {
+    party: "leadtek",
+    endpoints: [
+      "POST /api/v1/models/chunks",
+      "PATCH /api/v1/models/chunks/{chunkID}",
+      "POST /api/v1/models/chunks/{id}/finalize",
+    ],
+  },
+  "BE-MODEL-3": {
+    party: "leadtek",
+    endpoints: [
+      "GET /api/v1/projects/{projectID}/models/{modelID}/download",
+      "GET /api/v1/projects/{projectID}/models/{modelID}/download/ws",
+    ],
+  },
+  "BE-MODEL-4": {
+    party: "gary",
+    endpoints: [
+      "POST /model-registry/v1/models/",
+      "POST /model-registry/v1/models/{model_id}/versions",
+      "GET /model-registry/v1/models/{model_id}/versions/{model_version_id}",
+      "PATCH /model-registry/v1/models/{model_id}/versions/{model_version_id}/status",
+    ],
+  },
+
+  // 叢集資源。
+  "BE-CLUSTER-1": {
+    party: "leadtek",
+    endpoints: ["GET /api/v1/grafana/{path}", "GET /api/v1/nodes/{nodeID}/allocation"],
+  },
+  "BE-CLUSTER-2": "self", // 30 秒推播頻率是 mobagel 前端閘道自訂
+  "BE-CLUSTER-3": {
+    party: "leadtek",
+    endpoints: [
+      "GET /api/v1/projects/{id}/resource_list/allocation",
+      "GET /api/v1/nodes/disk-usage",
+    ],
+  },
+
+  // 申請流程：申請單資料模型與狀態機是 mobagel 自有；HITL 審核任務載體在 gary。
+  "BE-APPLY-1": { party: "gary", endpoints: ["POST /hitl/v1/tasks"] },
+  "BE-APPLY-2": "self",
+  "BE-APPLY-3": "self",
+  "BE-APPLY-4": "self",
+  "BE-APPLY-5": "self",
+  "BE-APPLY-6": "self",
+  "BE-APPLY-7": {
+    party: "gary",
+    endpoints: [
+      "DELETE /llm/v1/projects/{project_id}/clients/{client_id}",
+      "PATCH /llm/v1/projects/{project_id}/clients/{client_id}",
+    ],
+  },
+
+  // 審核與核發。
+  "BE-REVIEW-1": "self",
+  "BE-REVIEW-2": {
+    party: "gary",
+    endpoints: [
+      "PATCH /llm/v1/projects/{project_id}/team/limits",
+      "PATCH /llm/v1/projects/{project_id}/clients/{client_id}/limits",
+    ],
+  },
+  "BE-REVIEW-3": {
+    party: "gary",
+    endpoints: ["POST /llm/v1/projects/create", "POST /llm/v1/projects/{project_id}/clients"],
+  },
+  "BE-REVIEW-4": { party: "gary", endpoints: ["POST /hitl/v1/tasks/{hitl_task_id}/decisions"] },
+  "BE-REVIEW-5": "investigate",
+  "BE-REVIEW-6": { party: "gary", endpoints: ["GET /llm/v1/projects/{project_id}/clients"] },
+
+  // 專案與配額。
+  "BE-PROJ-1": {
+    party: "leadtek",
+    endpoints: ["GET /api/v1/projects", "GET /api/v1/projects/{id}/resource_list/allocation"],
+  },
+  "BE-PROJ-2": { party: "leadtek", endpoints: ["POST /api/v1/projects"] },
+  "BE-PROJ-3": {
+    party: "leadtek",
+    endpoints: [
+      "PUT /api/v1/projects/{project_id}/resources",
+      "GET /api/v1/nodes/{nodeID}/allocation",
+    ],
+  },
+  "BE-PROJ-4": {
+    party: "leadtek",
+    endpoints: ["GET /api/v1/projects/{id}", "GET /api/v1/projects/{projectID}/jobs/llm"],
+  },
+  "BE-PROJ-5": { party: "leadtek", endpoints: ["PUT /api/v1/projects/{project_id}/resources"] },
+
+  // 模型服務生命週期。
+  "BE-SVC-1": { party: "leadtek", endpoints: ["POST /api/v1/projects/{projectID}/jobs/llm"] },
+  "BE-SVC-2": "self",
+  "BE-SVC-3": "investigate",
+  "BE-SVC-4": {
+    party: "leadtek",
+    endpoints: ["PATCH /api/v1/projects/{project_id}/jobs/llm/{job_id}"],
+  },
+  "BE-SVC-5": {
+    party: "leadtek",
+    endpoints: ["GET /api/v1/projects/{projectID}/jobs/llm/{jobID}"],
+  },
+  "BE-SVC-6": {
+    party: "leadtek",
+    endpoints: [
+      "GET /api/v1/projects/{projectID}/jobs/llm/{jobID}/description",
+      "GET /api/v1/grafana/{path}",
+    ],
+  },
+  "BE-SVC-7": { party: "gary", endpoints: ["GET /trace-link/v1/litellm/usage-summary"] },
+  "BE-SVC-8": {
+    party: "gary",
+    endpoints: ["PATCH /llm/v1/projects/{project_id}/clients/{client_id}"],
+  },
+  "BE-SVC-9": {
+    party: "leadtek",
+    endpoints: [
+      "POST /api/v1/projects/{projectID}/jobs/llm/{jobID}/restart",
+      "POST /api/v1/projects/{projectID}/jobs/llm/{jobID}/stop",
+      "POST /api/v1/projects/{projectID}/jobs/llm/{jobID}/start",
+    ],
+  },
+  "BE-SVC-10": {
+    party: "leadtek",
+    endpoints: ["PUT /api/v1/projects/{projectID}/jobs/llm/{jobID}/resources"],
+  },
+  "BE-SVC-11": {
+    party: "leadtek",
+    endpoints: ["DELETE /api/v1/projects/{projectID}/jobs/llm/{jobID}"],
+  },
+  "BE-SVC-12": {
+    party: "leadtek",
+    endpoints: ["GET /api/v1/projects/{projectID}/jobs/llm/{jobID}/logs"],
+  },
+  "BE-SVC-13": {
+    party: "leadtek",
+    endpoints: ["GET /api/v1/projects/{projectID}/jobs/llm/{jobID}/terminal"],
+  },
+  "BE-SVC-14": {
+    party: "leadtek",
+    endpoints: ["POST /api/v1/projects/{projectID}/jobs/llm/{jobID}/commit"],
+  },
+
+  // 安全監控。
+  "BE-SEC-1": { party: "gary", endpoints: ["GET /audit/v1/events"] },
+  "BE-SEC-2": "investigate", // 攔截關鍵字清單維護在四份 spec 內找不到對應端點
+  "BE-SEC-3": {
+    party: "gary",
+    endpoints: [
+      "POST /runtime-guard/v1/input-scan",
+      "POST /runtime-guard/v1/output-scan",
+      "POST /runtime-guard/v1/rag-context-scan",
+    ],
+  },
+
+  // 追蹤與報表。
+  "BE-TRACE-1": { party: "gary", endpoints: ["GET /trace-link/v1/langfuse/traces"] },
+  "BE-TRACE-2": {
+    party: "gary",
+    endpoints: [
+      "GET /trace/v1/traces/{target_trace_id}/timeline",
+      "GET /trace-payload/v1/traces/{target_trace_id}/payloads",
+    ],
+  },
+  "BE-TRACE-3": { party: "gary", endpoints: ["GET /trace-link/v1/litellm/usage-summary"] },
+  "BE-TRACE-4": "self", // 報表口徑與匯出檔產生自建
+
+  // 帳號。
+  "BE-ACCT-1": "investigate", // 公務系統帳號同步在四份 spec 內沒有對應
+  "BE-ACCT-2": { party: "leadtek", endpoints: ["GET /api/v1/users"] },
+  "BE-ACCT-3": { party: "leadtek", endpoints: ["POST /api/v1/users"] },
+  "BE-ACCT-4": {
+    party: "leadtek",
+    endpoints: [
+      "PATCH /api/v1/users/{userID}",
+      "PATCH /api/v1/projects/{project_id}/users/{user_id}/role",
+    ],
+  },
+  "BE-ACCT-5": { party: "leadtek", endpoints: ["DELETE /api/v1/users/{userID}"] },
+
+  // 橫切。
+  // 稽核：可歸責到人的日誌只能在 mobagel 端寫——mobagel 對 leadtek 用共用 admin 帳號、
+  // 對 gary 的呼叫不附帶使用者身分，下游日誌不作為歸責依據，所以單 leg 落 mobagel。
+  "BE-X-1": "self",
+  "BE-X-2": "self", // 統一錯誤與空狀態契約是 mobagel 閘道自訂
+  "BE-X-3": {
+    party: "gary",
+    endpoints: [
+      "PATCH /llm/v1/projects/{project_id}/team/limits",
+      "PATCH /llm/v1/projects/{project_id}/clients/{client_id}/limits",
+    ],
+  },
+};
+
+/** 平台自建方＝唯一前端閘道，也是每條鏈的第一段。 */
+const SELF = "mobagel";
+
+/**
+ * 由一筆後端工項與它的下游落點，接出這筆工項的分工鏈。
+ * 鏈的形狀照宣告鏈：落在 gary 就是 mobagel → gary，落在 leadtek 就是
+ * mobagel → gary → leadtek（gary 那一段是純通道，沒有對應 API）。
+ * 每個 leg 都自帶散文——交付物上一個 leg 一列、一列一個 A。
+ */
+function partyChainOf(item: { id: string; title: string; scope: string; acceptance: string }): PartyLeg[] {
+  const policy = POLICY[item.id];
+  if (policy === undefined) throw new Error(`POLICY 缺後端工項 ${item.id} 的下游落點`);
+  if (policy === "investigate") return [{ party: NEEDS_INVESTIGATION, vendorEndpoints: [] }];
+  if (policy === "self") return [{ party: SELF, vendorEndpoints: [] }];
+
+  const target = policy.party;
+  const gateway: PartyLeg = {
+    party: SELF,
+    vendorEndpoints: [],
+    title: `${item.title}－mobagel 閘道轉呼`,
+    scope: `前端一律只呼叫 mobagel；由 mobagel 的「AI 資源控管平台」後端承接此請求，在 mobagel 端完成身分與授權判定後經 gary API gateway 轉呼下游 ${target}，並將回應整形為前端契約。權限判定只在 mobagel，${target} 不做逐使用者權限檢查。`,
+    acceptance: `前端不直接呼叫 ${target}；請求經 mobagel 授權後穿 gary API gateway 轉發，gateway 層與下游的逾時與錯誤都由 mobagel 收斂為統一錯誤契約（見 BE-X-2、BE-EXTRA-02）。`,
+  };
+  const implementation: PartyLeg = {
+    party: target,
+    vendor: target,
+    vendorEndpoints: policy.endpoints,
+    title: `${item.title}－${target} 實作`,
+    scope: item.scope,
+    acceptance: item.acceptance,
+  };
+  if (target === "gary") return [gateway, implementation];
+
+  // 三段鏈：gary 當純通道，沒有對應的 API 可配，端點留空但要寫出這個事實。
+  const relay: PartyLeg = {
+    party: "gary",
+    vendorEndpoints: [],
+    title: `${item.title}－gary API gateway 轉發`,
+    scope: `gary 需開代理 API 轉呼 ${target}，現有四份 spec 未提供對應端點；此段只做轉發，不實作 ${item.title} 的業務邏輯。`,
+    acceptance: `mobagel 的請求能經此段抵達 ${target} 並取回回應，轉發保留呼叫端身分與追蹤識別，逾時與錯誤以可辨識的形式回傳給 mobagel。`,
+  };
+  return [gateway, relay, implementation];
+}
+
 const pageKey = (p: { route: string; tab?: string }) => `${p.route} ${p.tab ?? ""}`;
 const feId = (pageIndex: number, actionIndex: number) =>
   `FE-${String(pageIndex + 1).padStart(2, "0")}-${String(actionIndex + 1).padStart(2, "0")}`;
 
-test("f2w-breakdown：劃分前端／後端工項並落地 workitems.json", () => {
-  const workflow = loadWorkflowForBreakdown(OUTPUT_ROOT, PROJECT);
-
+/** 逐頁組出前端工項；順序與 id 逐字對齊 workflow.json 的 actions 索引。 */
+function buildFrontend(workflow: ReturnType<typeof loadWorkflowForBreakdown>): WorkItemInput[] {
   // 每個 Page 由「哪個操作」開啟——作為該頁首筆工項的 dependsOn，依 workflow.json 的去向算出。
   const opener = new Map<string, string>();
   workflow.pages.forEach((p, i) => {
@@ -425,6 +704,11 @@ test("f2w-breakdown：劃分前端／後端工項並落地 workitems.json", () =
     });
   });
 
+  return frontend;
+}
+
+/** 由 BACKEND 表與派工政策組出後端工項（含分工鏈）。 */
+function buildBackend(workflow: ReturnType<typeof loadWorkflowForBreakdown>): WorkItemInput[] {
   const byTab = new Map(workflow.pages.map((p) => [p.tab ?? "", p]));
   const backend: WorkItemInput[] = BACKEND.map((b) => {
     const page = byTab.get(b.page);
@@ -437,16 +721,59 @@ test("f2w-breakdown：劃分前端／後端工項並落地 workitems.json", () =
       acceptance: b.a,
       dependsOn: b.d ?? [],
       risk: b.r ?? "",
+      partyChain: partyChainOf({ id: b.id, title: b.t, scope: b.s, acceptance: b.a }),
     };
   });
 
+  return backend;
+}
+
+test("f2w-breakdown：劃分前端／後端工項與分工鏈並落地 workitems.json", () => {
+  const workflow = loadWorkflowForBreakdown(OUTPUT_ROOT, PROJECT);
+
+  // 派工輸入自動發現：泳道名、宣告鏈與各方 capability 都由目錄慣例掃出來，driver 不扛政策表。
+  const inputs = discoverPartyInputs(SPEC_ROOT, PROJECT);
+  for (const line of inputs.report) console.log(line);
+  expect(inputs.parties).toEqual(["mobagel", "gary", "leadtek"]);
+  expect(inputs.declaredChains).toEqual([
+    ["mobagel"],
+    ["mobagel", "gary"],
+    ["mobagel", "gary", "leadtek"],
+  ]);
+
+  const frontend = buildFrontend(workflow);
+  const backend = buildBackend(workflow);
+
   // 存檔前套上人工修訂；後端 id 漂掉的那些會變孤兒，只發 warning。
   const revisions = loadProjectRevisions(WORKSPACE_ROOT, PROJECT);
-  const { workitems, warnings } = buildWorkitems(workflow, frontend, backend, revisions);
+  const { workitems, warnings } = buildWorkitems(workflow, frontend, backend, {
+    revisions,
+    declaredChains: inputs.declaredChains,
+    parties: inputs.parties,
+    capabilities: inputs.capabilities,
+  });
   expect(workitems.frontend).toHaveLength(workflow.pages.reduce((n, p) => n + p.actions.length, 0));
   expect(workitems.backend.map((i) => i.id)).toEqual(
     expect.arrayContaining(BACKEND.map((b) => b.id)),
   );
+
+  // 不拆項：後端筆數等於推論出來的筆數＋修訂 upsert 補的兩筆，id 集合不被改寫。
+  expect(workitems.backend).toHaveLength(60);
+  const lengths = workitems.backend.map((i) => i.partyChain!.length);
+  const dist = { 1: 0, 2: 0, 3: 0 } as Record<number, number>;
+  for (const n of lengths) dist[n] = (dist[n] ?? 0) + 1;
+  expect(dist).toEqual({ 1: 21, 2: 15, 3: 24 });
+
+  // 三段鏈逐字是宣告鏈第三條，中繼段沒有供應商與端點、但 scope 寫出 gary 要開代理 API。
+  const threeLeg = workitems.backend.filter((i) => i.partyChain!.length === 3);
+  expect(threeLeg).toHaveLength(24);
+  for (const item of threeLeg) {
+    const chain = item.partyChain!;
+    expect(chain.map((l) => l.party)).toEqual(["mobagel", "gary", "leadtek"]);
+    expect(chain[1]!.vendor).toBeUndefined();
+    expect(chain[1]!.vendorEndpoints).toEqual([]);
+    expect(chain[1]!.scope).toContain("gary 需開代理 API");
+  }
 
   // 後端修訂的孤兒比例：spec 假設「補漏比改錯常見」，這裡把數字量出來。
   const backendSets = revisions.filter(
@@ -457,4 +784,94 @@ test("f2w-breakdown：劃分前端／後端工項並落地 workitems.json", () =
   for (const w of warnings) console.warn(w);
 
   saveWorkitems(OUTPUT_ROOT, PROJECT, workitems);
+});
+
+test("f2w-breakdown-export：一個 leg 一列展開並落地 workitems.xlsx", async () => {
+  const workitems = loadWorkitemsForExport(OUTPUT_ROOT, PROJECT);
+  expect(hasPartyChains(workitems)).toBe(true);
+
+  const wb = buildWorkitemsWorkbook(workitems);
+  expect(wb.worksheets.map((w) => w.name)).toEqual([
+    OVERVIEW_SHEET,
+    FRONTEND_SHEET,
+    BACKEND_SHEET,
+  ]);
+  expect(wb.getWorksheet(FRONTEND_SHEET)!.rowCount - 1).toBe(workitems.frontend.length);
+
+  const backend = wb.getWorksheet(BACKEND_SHEET)!;
+  const legTotal = workitems.backend.reduce((n, i) => n + i.partyChain!.length, 0);
+  expect(backend.rowCount - 1).toBe(legTotal);
+  expect(legTotal).toBe(123);
+
+  const header = (backend.getRow(1).values as unknown[]).slice(1).map(String);
+  expect(header).toEqual([...BACKEND_SOURCED_COLUMNS]);
+  const col = (name: string) => header.indexOf(name) + 1;
+  const cell = (r: number, name: string) => String(backend.getRow(r).getCell(col(name)).value ?? "");
+
+  // 每列的來源狀態都是配對·待確認；畫押欄逐列留白。
+  for (let r = 2; r <= backend.rowCount; r++) {
+    expect(cell(r, "來源狀態")).toBe(SOURCING_STATUS_LABEL);
+    for (const blank of ["估時", "優先級", "R", "A", "C", "I", "簽核日期", "狀態"]) {
+      expect(cell(r, blank)).toBe("");
+    }
+  }
+
+  // gary 中繼列：24 筆三段鏈各一列，供應商與端點皆空、分工段 2/3，
+  // 且標題／範疇／驗收都不等於同組 leadtek 那一列。
+  const rows = Array.from({ length: backend.rowCount - 1 }, (_, i) => i + 2);
+  const relays = rows.filter((r) => cell(r, "分工段") === "2/3");
+  expect(relays).toHaveLength(24);
+  for (const r of relays) {
+    expect(cell(r, "派工方")).toBe("gary");
+    expect(cell(r, "供應商")).toBe("");
+    expect(cell(r, "供應商端點")).toBe("");
+    for (const field of ["標題", "範疇", "驗收標準"]) {
+      expect(cell(r, field)).not.toBe(cell(r + 1, field));
+    }
+  }
+
+  // 列標籤：多 leg 是 <工項id>#<leg序>，單 leg 是裸 id。
+  const labels = rows.map((r) => cell(r, "工項ID"));
+  expect(labels).toContain("BE-MODEL-1#1");
+  expect(labels).toContain("BE-MODEL-1#2");
+  expect(labels).toContain("BE-MODEL-1#3");
+  expect(labels).toContain("BE-AUTH-1");
+
+  const path = await saveWorkitemsWorkbook(OUTPUT_ROOT, PROJECT, wb);
+  console.log(
+    `SAVED ${path} | frontend=${workitems.frontend.length} backend=${workitems.backend.length} rows=${legTotal}`,
+  );
+});
+
+test("重跑冪等，且非宣告鏈的方序列讓整步丟錯不落地", () => {
+  const workflow = loadWorkflowForBreakdown(OUTPUT_ROOT, PROJECT);
+  const inputs = discoverPartyInputs(SPEC_ROOT, PROJECT);
+  const revisions = loadProjectRevisions(WORKSPACE_ROOT, PROJECT);
+  const options = {
+    revisions,
+    declaredChains: inputs.declaredChains,
+    parties: inputs.parties,
+    capabilities: inputs.capabilities,
+  };
+
+  // 落檔後的 workitems.json 就是上一支 test 的產物；照同一組輸入再組一次要逐字相同
+  // （不再有拆項造成的 id 改寫，所以連跑兩次的 id 集合與 partyChain 都不動）。
+  const saved = loadWorkitemsForExport(OUTPUT_ROOT, PROJECT);
+  const again = buildWorkitems(workflow, buildFrontend(workflow), buildBackend(workflow), options)
+    .workitems;
+  expect(again.backend.map((i) => i.id)).toEqual(saved.backend.map((i) => i.id));
+  expect(again.backend.map((i) => i.partyChain)).toEqual(saved.backend.map((i) => i.partyChain));
+
+  // 手動把一筆的方序列改成不在宣告鏈上的 mobagel > leadtek：整步丟錯、指名該筆。
+  const tampered = buildBackend(workflow).map((b) =>
+    b.id === "BE-MODEL-1"
+      ? {
+          ...b,
+          partyChain: [b.partyChain![0]!, b.partyChain![2]!],
+        }
+      : b,
+  );
+  const call = () => buildWorkitems(workflow, buildFrontend(workflow), tampered, options);
+  expect(call).toThrow(WorkitemsConsistencyError);
+  expect(call).toThrow(/BE-MODEL-1：mobagel > leadtek/);
 });

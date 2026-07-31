@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ContractValidationError } from "./validate";
-import { frontendWorkitemId, parseWorkitems } from "./workitems";
+import {
+  frontendWorkitemId,
+  parsePartyLegLabel,
+  parseWorkitems,
+  partyLegLabel,
+} from "./workitems";
 
 /** 一份合法的 workitems：兩筆前端（各對應一頁）、一筆後端（推論）。 */
 const validWorkitems = {
@@ -105,6 +110,88 @@ describe("parseWorkitems", () => {
       backend: [{ ...validWorkitems.backend[0], inferred: false }],
     };
     expect(() => parseWorkitems(bad)).toThrow(ContractValidationError);
+  });
+});
+
+describe("partyChain 契約", () => {
+  /** 由 validWorkitems 換一批後端工項；其餘原封。 */
+  const withBackend = (backend: unknown[]) => ({ ...validWorkitems, backend });
+  const chained = (partyChain: unknown) => ({
+    ...validWorkitems.backend[0]!,
+    partyChain,
+    sourcingConfirmed: false,
+  });
+  const secondItem = (partyChain: unknown) => ({
+    ...validWorkitems.backend[0]!,
+    id: "BE-2",
+    partyChain,
+    sourcingConfirmed: false,
+  });
+  const leg = (party: string, extra: Record<string, unknown> = {}) => ({
+    party,
+    vendorEndpoints: [],
+    ...extra,
+  });
+  const prose = { title: "一段", scope: "一段範疇。", acceptance: "一段驗收。" };
+
+  it("接受不帶 partyChain 的工項（既有專案不改一個字就能過）", () => {
+    expect(() => parseWorkitems(validWorkitems)).not.toThrow();
+  });
+
+  it("後端只有部分工項帶 partyChain 時被擋下，訊息指出缺的那幾筆 id", () => {
+    const bad = withBackend([chained([leg("mobagel")]), { ...validWorkitems.backend[0]!, id: "BE-2" }]);
+    expect(() => parseWorkitems(bad)).toThrow(ContractValidationError);
+    expect(() => parseWorkitems(bad)).toThrow(/BE-2/);
+  });
+
+  it("工項 id 含 # 被擋下並指名該筆", () => {
+    const bad = withBackend([{ ...validWorkitems.backend[0]!, id: "BE-1#2" }]);
+    expect(() => parseWorkitems(bad)).toThrow(/BE-1#2/);
+  });
+
+  it("多 leg 而某個 leg 缺散文時被擋下並指名該 leg 序", () => {
+    const bad = withBackend([
+      chained([leg("mobagel", prose), leg("gary"), leg("leadtek", prose)]),
+    ]);
+    expect(() => parseWorkitems(bad)).toThrow(/leg 2/);
+  });
+
+  it("單 leg 且三欄皆缺時合法（缺欄繼承工項層）", () => {
+    expect(() => parseWorkitems(withBackend([chained([leg("mobagel")])]))).not.toThrow();
+  });
+
+  it("leg 的 vendor 與 vendorEndpoints 不成對時被擋下", () => {
+    const onlyVendor = withBackend([chained([{ party: "gary", vendor: "gary", vendorEndpoints: [] }])]);
+    expect(() => parseWorkitems(onlyVendor)).toThrow(ContractValidationError);
+    const onlyEndpoints = withBackend([chained([{ party: "gary", vendorEndpoints: ["GET /x"] }])]);
+    expect(() => parseWorkitems(onlyEndpoints)).toThrow(ContractValidationError);
+  });
+
+  it("needs-investigation 不得帶 vendor，也不得出現在多 leg 鏈裡", () => {
+    const withVendor = withBackend([
+      chained([{ party: "needs-investigation", vendor: "gary", vendorEndpoints: ["GET /x"] }]),
+    ]);
+    expect(() => parseWorkitems(withVendor)).toThrow(ContractValidationError);
+
+    const inChain = withBackend([
+      chained([leg("mobagel", prose), leg("needs-investigation", prose)]),
+      secondItem([leg("mobagel")]),
+    ]);
+    expect(() => parseWorkitems(inChain)).toThrow(/needs-investigation/);
+  });
+});
+
+describe("partyLegLabel", () => {
+  it("單 leg 是裸 id，多 leg 加 #<leg序>", () => {
+    expect(partyLegLabel("BE-MODEL-1", 1)).toBe("BE-MODEL-1");
+    expect(partyLegLabel("BE-MODEL-1", 2)).toBe("BE-MODEL-1#2");
+    expect(partyLegLabel("BE-MODEL-1", 1, 3)).toBe("BE-MODEL-1#1");
+    expect(partyLegLabel("BE-MODEL-1", 1, 1)).toBe("BE-MODEL-1");
+  });
+
+  it("切得回去——工項 id 不含 # 由契約保證，所以切法無歧義", () => {
+    expect(parsePartyLegLabel("BE-MODEL-1")).toEqual({ itemId: "BE-MODEL-1" });
+    expect(parsePartyLegLabel("BE-MODEL-1#2")).toEqual({ itemId: "BE-MODEL-1", legIndex: 2 });
   });
 });
 

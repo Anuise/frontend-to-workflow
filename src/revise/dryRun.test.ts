@@ -85,7 +85,7 @@ describe("dryRunWorkflowRevisions", () => {
         },
       ]),
     );
-    expect(report).toEqual({ target: "workflow", ok: true, orphans: [] });
+    expect(report).toMatchObject({ target: "workflow", ok: true, orphans: [] });
   });
 
   it("修訂會讓契約驗證失敗時回 ok=false 與完整錯誤訊息", () => {
@@ -163,7 +163,7 @@ describe("dryRunWorkitemsRevisions", () => {
         },
       ]),
     );
-    expect(report).toEqual({ target: "workitems", ok: true, orphans: [] });
+    expect(report).toMatchObject({ target: "workitems", ok: true, orphans: [] });
   });
 
   it("修訂會跌破顆粒度底線時報出來", () => {
@@ -214,5 +214,54 @@ describe("dryRunWorkitemsRevisions", () => {
     );
     expect(report.orphans).toHaveLength(1);
     expect(report.orphans[0]).toContain("BE-99");
+  });
+});
+
+describe("dryRunWorkitemsRevisions（分工鏈）", () => {
+  const DECLARED = [["mobagel"], ["mobagel", "gary"]];
+  const PARTIES = ["mobagel", "gary"];
+
+  /** 把第一筆後端工項換成帶單 leg 分工鏈的版本。 */
+  const chained = (party: string) =>
+    parseWorkitems({
+      ...workitems,
+      backend: workitems.backend.map((i, index) =>
+        index === 0
+          ? { ...i, partyChain: [{ party, vendorEndpoints: [] }], sourcingConfirmed: false }
+          : i,
+      ),
+    });
+
+  it("方序列在宣告鏈內時乾跑綠", () => {
+    const report = dryRunWorkitemsRevisions(chained("mobagel"), workflow, [], {
+      parties: PARTIES,
+      declaredChains: DECLARED,
+    });
+    expect(report.ok).toBe(true);
+  });
+
+  it("set partyChain 改成非宣告鏈時乾跑就紅——不必等重跑 f2w-breakdown 才炸", () => {
+    const before = chained("mobagel");
+    const revisions = parseRevisions([
+      {
+        target: "workitems",
+        op: "set",
+        anchor: before.backend[0]!.id,
+        field: "partyChain",
+        value: [{ party: "gary", vendorEndpoints: [] }],
+        reason: "手動改派。",
+      },
+    ]);
+    const report = dryRunWorkitemsRevisions(before, workflow, revisions, {
+      parties: PARTIES,
+      declaredChains: DECLARED,
+    });
+    expect(report.ok).toBe(false);
+    expect(report.error).toContain("不在宣告鏈內");
+  });
+
+  it("不給派工輸入時不校鏈（沒有宣告鏈可對照）", () => {
+    const report = dryRunWorkitemsRevisions(chained("gary"), workflow, []);
+    expect(report.ok).toBe(true);
   });
 });
