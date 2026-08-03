@@ -27,7 +27,7 @@ f2w-revise <workflow|workitems>
    - 每筆的形狀是 `{ target, op, anchor, field?, value, reason, at? }`：
      - **`target`** — `"workflow"` 或 `"workitems"`，就是使用者講明的那個。
      - **`op`** — `"set"`（覆蓋欄位）／`"upsert"`（整筆新增或覆蓋工項）／`"remove"`（刪掉工項）。**`upsert` 與 `remove` 只對 `workitems` 開放**；workflow 要增刪頁請回頭改 `pages.json` 再重跑 f2w-capture／f2w-describe。
-     - **`anchor`** — workflow 是字面值 `"overview"` 或一個 Page 識別（`{ route, tab? }`，逐字取自 `workflow.json`）；workitems 是工項 id，**也可以是交付物上的分工鏈列標籤 `<工項id>#<leg序>`**（如 `BE-MODEL-1#2`，leg 序從 1 起）——使用者照 `workitems.xlsx` 抄下來的錨必須錨得到東西。工項 id 由契約層保證不含 `#`，所以切法無歧義。
+     - **`anchor`** — workflow 是字面值 `"overview"` 或一個 Page 識別（`{ route, tab? }`，逐字取自 `workflow.json`）；workitems 是工項 id，**也可以是交付物上的分工鏈列標籤 `<工項id>#<leg序>`**（如 `BE-MODEL-1#2`，leg 序從 1 起）——使用者照 `workitems-<時戳>.xlsx` 抄下來的錨必須錨得到東西。工項 id 由契約層保證不含 `#`，所以切法無歧義。
      - **`field`** — 只有 `set` 需要。workflow 可覆蓋 `purpose`／`content`／`actions`（整組）／`overview`；workitems 可覆蓋 `title`／`scope`／`acceptance`／`risk`／`dependsOn`（整組）／`partyChain`（整組 leg 陣列）。**`inferred` 不可被覆蓋**（它由工項落在 frontend 或 backend 陣列決定）。
      - **錨在 leg 上時**：`title`／`scope`／`acceptance` 寫進**那一段**；`partyChain` 給長度 1 的陣列即**取代那一段**（這是覆蓋 leg 的 `party`／`vendor`／`vendorEndpoints` 的途徑）；`risk`／`dependsOn` 沒有 leg 層版本，仍落在工項層。leg 序超出鏈長時算孤兒（發 warning、不中止）。
      - **`value`** — 你重寫的**欄位全文**，型別依 `field` 決定（`purpose` 是字串、`actions` 是操作陣列、`dependsOn` 是 id 陣列、`upsert` 是一整筆 Work item 物件，其 `id` 必須與 `anchor` 相同、`inferred` 決定它落在前端還是後端陣列）。
@@ -70,7 +70,7 @@ f2w-revise <workflow|workitems> --prune
 
 1. `f2w-revise` 落檔到 `revisions.json`（本步；只做乾跑，不寫回任何 json）。
 2. **重跑上游**才套用：`f2w-describe` 套 workflow 側、`f2w-breakdown` 套 workitems 側。這一步之後 `workflow.json`／`workitems.json` 才帶著校正。
-3. **重跑交付物**才看得到：`f2w-export`（`workflow.xlsx`）、`f2w-breakdown-export`（`workitems.xlsx`）、`f2w-diagram`（`mainflow.drawio`）。
+3. **重跑交付物**才看得到：`f2w-export`（`workflow-<時戳>.xlsx`）、`f2w-breakdown-export`（`workitems-<時戳>.xlsx`）、`f2w-diagram`（`mainflow.drawio`）。
    - `f2w-diagram` 有個陷阱：`mainflow.json` **已存在就沿用、不重推論**。要讓 workflow 側的校正反映到主線上，得先刪掉 `mainflow.json` 或明講「重推主線」。
 
 ## 欄位凍結語意（一定要講給使用者聽）

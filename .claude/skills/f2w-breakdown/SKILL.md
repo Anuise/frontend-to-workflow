@@ -45,7 +45,7 @@ description: frontend-to-workflow 管線的第五步。讀取 workflow.json，�
    - 涵蓋／參照／分工鏈不符丟 `WorkitemsConsistencyError`；不合契約（空欄位、id 重複或含 `#`、inferred 旗標、`partyChain` 半套、多 leg 缺散文）冒泡 `ContractValidationError`。
 6. **保存** — `saveWorkitems(outputRoot, project, workitems)`
    - 通過契約驗證才寫 `output/<project>/workitems.json`；驗證失敗丟 `ContractValidationError` 且不落地。
-7. **分流提示** — 落檔後告訴使用者下一步：跑 `f2w-breakdown-export` 出 `workitems.xlsx`。帶 `partyChain` 時提醒後端 sheet 會**一個 leg 一列**展開（列數會多於後端工項筆數），列標籤是 `<工項id>#<leg序>`。
+7. **分流提示** — 落檔後告訴使用者下一步：跑 `f2w-breakdown-export` 出 `workitems-<時戳>.xlsx`。帶 `partyChain` 時提醒後端 sheet 會**一個 leg 一列**展開（列數會多於後端工項筆數），列標籤是 `<工項id>#<leg序>`。
 
 ## 逃生口
 

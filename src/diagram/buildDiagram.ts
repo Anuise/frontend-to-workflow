@@ -88,7 +88,7 @@ function pageLabel(id: PageId): string {
 /** 落選頁提醒：圖上不畫，但要讓使用者一眼看出 AI 砍了什麼、要不要救回來。 */
 export function excludedPagesWarning(excluded: readonly ExcludedPage[]): string {
   const listed = excluded.map((page) => `${pageLabel(page)}（${page.reason}）`).join("、");
-  return `以下 ${excluded.length} 頁不屬任何主線，圖上不畫：${listed}。要救回來就把它移進 mainflow.json 的某一步；完整操作清單見 workflow.xlsx。`;
+  return `以下 ${excluded.length} 頁不屬任何主線，圖上不畫：${listed}。要救回來就把它移進 mainflow.json 的某一步；完整操作清單見 f2w-export 產出的 workflow-<時戳>.xlsx。`;
 }
 
 /** 該頁的換頁操作（destination 非 null）；不換頁的操作不成邊。 */

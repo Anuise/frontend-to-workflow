@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import ExcelJS from "exceljs";
 import { type PageId, pageIdKey } from "../contracts/page";
 import type { Workflow, WorkflowAction } from "../contracts/workflow";
-import { contractPath } from "../output";
+import { timestampedContractPath } from "../output";
 import type { ScreenshotImage } from "./inputs";
 
 /** 兩個 sheet 的名稱（對外常數，供測試與讀取者參照）。 */
@@ -102,15 +102,16 @@ export function buildWorkbook(
 }
 
 /**
- * 把組好的 Workbook 寫成 output/<project>/workflow.xlsx，回傳寫入路徑。
- * 缺目錄會自動建立。
+ * 把組好的 Workbook 寫成 output/<project>/workflow-<YYYYMMDD-HHmmss>.xlsx，回傳寫入路徑。
+ * 缺目錄會自動建立；時戳可注入（省略時取當下本地時間），每次重跑各留一份、不互相覆蓋。
  */
 export async function saveWorkbook(
   outputRoot: string,
   project: string,
   workbook: ExcelJS.Workbook,
+  at: Date = new Date(),
 ): Promise<string> {
-  const path = contractPath(outputRoot, project, "workbook");
+  const path = timestampedContractPath(outputRoot, project, "workbook", at);
   mkdirSync(dirname(path), { recursive: true });
   await workbook.xlsx.writeFile(path);
   return path;
