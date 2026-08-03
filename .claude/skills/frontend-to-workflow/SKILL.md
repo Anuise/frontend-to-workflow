@@ -5,7 +5,7 @@ description: frontend-to-workflow 管線的總說明。說明六個 step skill�
 
 # frontend-to-workflow：管線總說明
 
-把一個 **Pure-frontend** 的 **Project** 轉成「使用者視角的 **Workflow description**」，交付成 **Workbook**（`workflow.xlsx`）；並進一步把工作流程拆成可分派、可畫押的 **Work item**，交付成畫押欄留白的**範本** `workitems.xlsx`。整條管線拆成六個各自觸發的 step skill，外加一個可隨時插入且可重複跑的**可選插入步** `f2w-revise`（把人工校正變成撐得過重跑的 **Revision**），以及一個與 `f2w-export` 併行的**分支步** `f2w-diagram`（同讀 `workflow.json`、推論出主線後出 draw.io **Main flow diagram**、不餵任何下游）。本 skill 只講**正確順序**與**檔案交接**，不執行任何一步。
+把一個 **Pure-frontend** 的 **Project** 轉成「使用者視角的 **Workflow description**」，交付成 **Workbook**（`workflow-<YYYYMMDD-HHmmss>.xlsx`）；並進一步把工作流程拆成可分派、可畫押的 **Work item**，交付成畫押欄留白的**範本** `workitems-<YYYYMMDD-HHmmss>.xlsx`（兩支交付物檔名都帶寫檔當下的本地年月日時分秒，重跑不覆蓋舊檔）。整條管線拆成六個各自觸發的 step skill，外加一個可隨時插入且可重複跑的**可選插入步** `f2w-revise`（把人工校正變成撐得過重跑的 **Revision**），以及一個與 `f2w-export` 併行的**分支步** `f2w-diagram`（同讀 `workflow.json`、推論出主線後出 draw.io **Main flow diagram**、不餵任何下游）。本 skill 只講**正確順序**與**檔案交接**，不執行任何一步。
 
 ## 核心原則：不自動串跑
 
@@ -22,20 +22,20 @@ description: frontend-to-workflow 管線的總說明。說明六個 step skill�
 | 1 | `f2w-start` | 無（管線起點） | `output/<project>/manifest.yml` |
 | 2 | `f2w-capture` | `manifest.yml` | `output/<project>/pages.json`、`output/<project>/screenshots/` |
 | 3 | `f2w-describe` | `pages.json`、`screenshots/` | `output/<project>/workflow.json` |
-| 4 | `f2w-export` | `workflow.json`、`pages.json`、`screenshots/` | `output/<project>/workflow.xlsx` |
+| 4 | `f2w-export` | `workflow.json`、`pages.json`、`screenshots/` | `output/<project>/workflow-<YYYYMMDD-HHmmss>.xlsx` |
 | 分支（與步 4 併行） | `f2w-diagram` | `workflow.json` | `output/<project>/mainflow.json`、`output/<project>/mainflow.drawio` |
 | 5 | `f2w-breakdown` | `workflow.json`；有派工時另掃 `workspace/spec/<project>/`（權責泳道圖與 Vendor spec） | `output/<project>/workitems.json` |
 | 可選插入步（可重複） | `f2w-revise` | `workflow.json` 或 `workitems.json`（依 target） | `workspace/revisions/<project>/revisions.json` |
-| 6 | `f2w-breakdown-export` | `workitems.json` | `output/<project>/workitems.xlsx` |
+| 6 | `f2w-breakdown-export` | `workitems.json` | `output/<project>/workitems-<YYYYMMDD-HHmmss>.xlsx` |
 
 - **f2w-start**：偵測 Project 如何安裝／啟動／對外 port／base URL，經使用者確認後保存成 **Manifest**（`manifest.yml`），並把 Project 實際跑起來。
 - **f2w-capture**：讀執行中 Project，列舉所有 **Page**（正規化路由；同路由下不同 tab 各成一頁）並逐頁截圖，產出 `pages.json` 與 `screenshots/`。
 - **f2w-describe**：看截圖，以使用者視角為每個 Page 寫一段 **Workflow description**（截圖來源、頁面用途、主要內容、可執行操作、每個操作的操作去向），另寫一段跨頁 **Overview**，產出 `workflow.json`。
-- **f2w-export**：組裝最終 **Workbook** `workflow.xlsx`：含「概述」sheet（放 Overview）與「逐頁工作流程」sheet（每列一個 Page，含 Workflow description 且嵌入該頁截圖縮圖）。新產出的 `workflow.json` 每頁會保留 `screenshot`；本步仍讀 `pages.json` 作為截圖對應的 fallback 與一致性來源。
-- **f2w-diagram**（分支步，與 f2w-export 併行）：**推論步**。讀 `workflow.json`，把 Page 按**頂層分類**分組——一個分類一條 **Main flow（主線）**、`name` 照抄分類名、順序照頁序——再依每個 Page 的頁面用途切步，先寫成可手改的交接檔 `mainflow.json`——**已存在就沿用、不重推論**（要重推請先刪檔或明講「重推主線」）；再依 `mainflow.json` 確定性地畫出多分頁的 **Main flow diagram** `mainflow.drawio`，讀者是**業主**：**一條主線一張大分頁**（第 1 頁就是第一條主線）、**最後一頁固定是「總覽」**——把每條主線那一列照 `flows` 順序由上到下排在同一頁（內容與各主線那頁逐字相同、只換 y 座標），拿來簡報與列印。頁內是主線名 24px 粗體標題 ＋ 同色系細橫線 ＋ **單列橫排、不折行**的 1–10 個 **Step（步驟）**，每步兩段式（粗體「編號. 業務動作名」＋ 小字說明），每條主線各一個色系（固定色表依主線順序取、超過循環）。圖上**只畫主幹**，彈窗與明細頁不畫；**一步可收攏多個 Page**（例如服務維護的五個 tab 收成「維運模型服務」一步），收攏的頁不上圖面、只進 tooltip（抬頭「此步驟涵蓋的頁面：」）。邊的 label 是 AI 寫的業務轉場動作，但相鄰兩步之間必須有 `workflow.json` 裡真實的操作去向墊背（來源步任一頁 → 目標步任一頁），接不上就丟 `DiagramConsistencyError`、要求改順序或重新分步，不畫虛線；`steps[].pages` ∪ `excludedPages` 也必須剛好等於 `workflow.json` 的頁集合、每頁只表態一次。落選頁圖上完全不提，只在 `mainflow.json` 的 `excludedPages`（各附一句原因）與對話回報裡交代，完整操作清單仍以 `workflow.xlsx` 為權威（分類全部上圖時 `excludedPages` 就是空的）。圖上**不標「推論·待確認」、不標 ⚠**——給業主看的圖要乾淨好懂。決策見 ADR-0006、ADR-0008、ADR-0009（主線邊界＝頂層 Page 分類）與 ADR-0010（最後一頁固定是總覽）。
+- **f2w-export**：組裝最終 **Workbook** `workflow-<YYYYMMDD-HHmmss>.xlsx`（檔名帶寫檔當下的本地年月日時分秒，如 `workflow-20260803-153012.xlsx`；每跑一次各留一份、不覆蓋舊檔）：含「概述」sheet（放 Overview）與「逐頁工作流程」sheet（每列一個 Page，含 Workflow description 且嵌入該頁截圖縮圖）。新產出的 `workflow.json` 每頁會保留 `screenshot`；本步仍讀 `pages.json` 作為截圖對應的 fallback 與一致性來源。
+- **f2w-diagram**（分支步，與 f2w-export 併行）：**推論步**。讀 `workflow.json`，把 Page 按**頂層分類**分組——一個分類一條 **Main flow（主線）**、`name` 照抄分類名、順序照頁序——再依每個 Page 的頁面用途切步，先寫成可手改的交接檔 `mainflow.json`——**已存在就沿用、不重推論**（要重推請先刪檔或明講「重推主線」）；再依 `mainflow.json` 確定性地畫出多分頁的 **Main flow diagram** `mainflow.drawio`，讀者是**業主**：**一條主線一張大分頁**（第 1 頁就是第一條主線）、**最後一頁固定是「總覽」**——把每條主線那一列照 `flows` 順序由上到下排在同一頁（內容與各主線那頁逐字相同、只換 y 座標），拿來簡報與列印。頁內是主線名 24px 粗體標題 ＋ 同色系細橫線 ＋ **單列橫排、不折行**的 1–10 個 **Step（步驟）**，每步兩段式（粗體「編號. 業務動作名」＋ 小字說明），每條主線各一個色系（固定色表依主線順序取、超過循環）。圖上**只畫主幹**，彈窗與明細頁不畫；**一步可收攏多個 Page**（例如服務維護的五個 tab 收成「維運模型服務」一步），收攏的頁不上圖面、只進 tooltip（抬頭「此步驟涵蓋的頁面：」）。邊的 label 是 AI 寫的業務轉場動作，但相鄰兩步之間必須有 `workflow.json` 裡真實的操作去向墊背（來源步任一頁 → 目標步任一頁），接不上就丟 `DiagramConsistencyError`、要求改順序或重新分步，不畫虛線；`steps[].pages` ∪ `excludedPages` 也必須剛好等於 `workflow.json` 的頁集合、每頁只表態一次。落選頁圖上完全不提，只在 `mainflow.json` 的 `excludedPages`（各附一句原因）與對話回報裡交代，完整操作清單仍以 `workflow-<時戳>.xlsx` 為權威（分類全部上圖時 `excludedPages` 就是空的）。圖上**不標「推論·待確認」、不標 ⚠**——給業主看的圖要乾淨好懂。決策見 ADR-0006、ADR-0008、ADR-0009（主線邊界＝頂層 Page 分類）與 ADR-0010（最後一頁固定是總覽）。
 - **f2w-breakdown**：讀 `workflow.json`，依每個 Page 的 Workflow description 把工作拆成**前端 Work item**（觀察自畫面）與**後端 Work item**（AI 推論、一律標「推論·待確認」），產出 **Work breakdown** `workitems.json`。承諾型欄位（估時／優先級／RACI／簽核／狀態）刻意不進 json。**派工併在這一步**：`workspace/spec/<project>/` 存在時自動掃出**權責泳道圖**（project 根的 `.drawio`，泳道＝分工方）與 **Vendor spec**（`<方名>/*.json`，**目錄名即分工方名**），每筆後端工項帶一條 **Party chain（分工鏈）**——一個 leg 陣列，每個 leg 是 `{ party, vendor?, vendorEndpoints, title?, scope?, acceptance? }`。**工項不拆項、id 不改寫**，多方接力只是多一個 leg（見 `docs/adr/0016-work-item-carries-party-chain.md`）。方序列必須逐字等於圖上宣告的呼叫鏈之一，否則整步丟錯不落地。
 - **f2w-revise**（可選插入步，同一專案可反覆跑）：`f2w-revise <workflow|workitems> <修改需求>`。把使用者的一句修改需求轉寫成一批宣告式的 **Revision（修訂）**，append 落檔到 `workspace/revisions/<project>/revisions.json`（**唯一落在 `workspace/` 的管線產出**，因為內容作者是人，見 ADR-0011），並當場做一次**乾跑驗證**（套到當前 json 上跑契約與顆粒度底線、報孤兒，**不寫回任何 json**）。它自己不改任何 json——**套用的執行者是上游**：重跑 `f2w-describe`／`f2w-breakdown` 時修訂自動套回，所以重跑不再是「丟掉校正」而是「拿到新資訊並帶回校正」。代價是**效果不即時**（要等下次重跑上游）與**欄位凍結**（被 `set` 過的欄位重跑改不動，除非手動刪掉那筆修訂）。`--prune` 可把同作用點被後寫覆蓋的歷史搬進 `revisions.archive.json`。不帶修改需求觸發時只做乾跑體檢。決策見 ADR-0011、ADR-0012、ADR-0013 與 `docs/adr/0017-revision-prune-only-provable-and-archives.md`。
-- **f2w-breakdown-export**：讀 `workitems.json`，組裝最終交付**範本** `workitems.xlsx`（「概述」「前端工項」「後端工項」三個 sheet，畫押欄留白、不嵌截圖）。帶 partyChain 時後端 sheet **一個 leg 一列**：列標籤單 leg 是裸工項 id、多 leg 是 `<工項id>#<leg序>`，各列帶自己的分工方／供應商／端點與散文，各自畫押。範本可被重跑覆蓋；人須另存一份**工作副本**填**權責畫押**值（RACI／估時／優先級／簽核／狀態），重跑只覆蓋範本、不動工作副本。
+- **f2w-breakdown-export**：讀 `workitems.json`，組裝最終交付**範本** `workitems-<YYYYMMDD-HHmmss>.xlsx`（檔名帶寫檔當下的本地年月日時分秒，如 `workitems-20260803-153012.xlsx`；每跑一次各留一份、不覆蓋舊檔。「概述」「前端工項」「後端工項」三個 sheet，畫押欄留白、不嵌截圖）。帶 partyChain 時後端 sheet **一個 leg 一列**：列標籤單 leg 是裸工項 id、多 leg 是 `<工項id>#<leg序>`，各列帶自己的分工方／供應商／端點與散文，各自畫押。重跑出的是新一份帶時戳的範本、舊檔不被覆蓋；人須另存一份**工作副本**填**權責畫押**值（RACI／估時／優先級／簽核／狀態），換到新範本時畫押值須人工搬。
 
 ## 缺前置檔：請先跑上一步
 
@@ -48,11 +48,11 @@ description: frontend-to-workflow 管線的總說明。說明六個 step skill�
 - `f2w-revise` 依 target 要求 `workflow.json`（→ f2w-describe）或 `workitems.json`（→ f2w-breakdown）；`workspace/revisions/<project>/revisions.json` 缺席**不是**錯誤（修訂是可選的，視為沒有修訂）。
 - `workspace/spec/<project>/` **不存在不是錯誤**（純自建專案不派工，安靜照跑）；存在但沒有任何可用檔才中止——那更像擺錯位置。
 
-（`workflow.xlsx` 與 `workitems.xlsx` 都是終點交付物，沒有再下一步。）
+（`workflow-<時戳>.xlsx` 與 `workitems-<時戳>.xlsx` 都是終點交付物，沒有再下一步。）
 
 ## 逃生口
 
-`manifest.yml`、`pages.json`、`workflow.json`、`mainflow.json`、`workitems.json` 都是**宣告式逃生口**：自動偵測／列舉／描述／主線推論／拆項與派工不完美時，可直接手改該檔再重跑後續步驟，重跑會尊重手改值（`mainflow.json` 已存在時 f2w-diagram 不重推論，直接照手改後的版本畫）。**派錯方就直接手改 `workitems.json` 的 `partyChain`，零重跑**——這是派工併進 f2w-breakdown 之後補回操作成本的地方（見 `docs/adr/0015-party-assignment-merges-into-f2w-breakdown.md`）。**例外是 `workflow.json` 與 `workitems.json`**：它們由上游整份覆寫，手改只活到下一次重跑那一步為止——要讓校正撐過重跑，用 `f2w-revise` 把它變成一筆修訂（`revisions.json` 本身也是逃生口：手寫一筆或刪掉一筆都可以）。`workflow.xlsx`、`mainflow.drawio` 與 `workitems.xlsx` 是交付物、不是交接檔：`workflow.xlsx` 不預期手改，內容不對時回頭改上游的宣告式檔案再重跑 f2w-export；`mainflow.drawio` 同理（內容不對改 `mainflow.json` 再重跑；重跑直接覆寫，可在 draw.io 圖形化調版面但要另存副本才留得住）；`workitems.xlsx` 是畫押欄留白的**範本**、可被重跑覆蓋，人須另存一份**工作副本**填權責畫押值，重跑只覆蓋範本、不動工作副本。
+`manifest.yml`、`pages.json`、`workflow.json`、`mainflow.json`、`workitems.json` 都是**宣告式逃生口**：自動偵測／列舉／描述／主線推論／拆項與派工不完美時，可直接手改該檔再重跑後續步驟，重跑會尊重手改值（`mainflow.json` 已存在時 f2w-diagram 不重推論，直接照手改後的版本畫）。**派錯方就直接手改 `workitems.json` 的 `partyChain`，零重跑**——這是派工併進 f2w-breakdown 之後補回操作成本的地方（見 `docs/adr/0015-party-assignment-merges-into-f2w-breakdown.md`）。**例外是 `workflow.json` 與 `workitems.json`**：它們由上游整份覆寫，手改只活到下一次重跑那一步為止——要讓校正撐過重跑，用 `f2w-revise` 把它變成一筆修訂（`revisions.json` 本身也是逃生口：手寫一筆或刪掉一筆都可以）。兩支 xlsx 與 `mainflow.drawio` 是交付物、不是交接檔：`workflow-<時戳>.xlsx` 不預期手改，內容不對時回頭改上游的宣告式檔案再重跑 f2w-export；`workitems-<時戳>.xlsx` 是畫押欄留白的**範本**，人須另存一份**工作副本**填權責畫押值。**兩支 xlsx 的檔名都帶寫檔當下的本地年月日時分秒（`YYYYMMDD-HHmmss`），重跑各留一份、不覆蓋舊檔**——最新的一份就是時戳最大的那個，要清舊檔由使用者自行決定。`mainflow.drawio` 例外，**沒有時戳、重跑直接覆寫**（內容不對改 `mainflow.json` 再重跑；可在 draw.io 圖形化調版面但要另存副本才留得住）。
 
 ## 各步細節
 

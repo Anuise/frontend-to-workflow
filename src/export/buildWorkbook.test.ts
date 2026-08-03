@@ -5,7 +5,7 @@ import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { pageIdKey } from "../contracts/page";
 import type { Workflow } from "../contracts/workflow";
-import { contractPath } from "../output";
+import { contractPath, timestampedContractPath } from "../output";
 import {
   OVERVIEW_SHEET,
   PAGES_SHEET,
@@ -102,12 +102,16 @@ describe("buildWorkbook", () => {
 });
 
 describe("saveWorkbook", () => {
-  it("寫出 workflow.xlsx，可用 ExcelJS 讀回且兩個 sheet 都在", async () => {
+  it("寫出帶時戳的 workflow.xlsx，可用 ExcelJS 讀回且兩個 sheet 都在", async () => {
     const root = mkdtempSync(join(tmpdir(), "f2w-export-save-"));
+    const at = new Date(2026, 7, 3, 15, 30, 12);
     const wb = buildWorkbook(workflow, fullScreenshots());
-    const path = await saveWorkbook(root, "demo", wb);
-    expect(path).toBe(contractPath(root, "demo", "workbook"));
+    const path = await saveWorkbook(root, "demo", wb, at);
+    expect(path).toBe(timestampedContractPath(root, "demo", "workbook", at));
+    expect(path.endsWith("workflow-20260803-153012.xlsx")).toBe(true);
     expect(existsSync(path)).toBe(true);
+    // 不留無時戳的舊檔
+    expect(existsSync(contractPath(root, "demo", "workbook"))).toBe(false);
 
     const reread = new ExcelJS.Workbook();
     await reread.xlsx.readFile(path);

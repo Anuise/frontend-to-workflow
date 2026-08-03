@@ -33,7 +33,7 @@ _Avoid_: summary, caption, 說明（泛稱）
 _Avoid_: intro, abstract, 總覽頁（那是 Main flow diagram 的最後一個 draw.io 分頁，與這段敘述無關）
 
 **Workbook（工作流程 Excel）**:
-最終交付物 `workflow.xlsx`：含「概述」與「逐頁工作流程」兩個 sheet，逐頁列出 Workflow description 並嵌入截圖縮圖。
+最終交付物 `workflow-<YYYYMMDD-HHmmss>.xlsx`：含「概述」與「逐頁工作流程」兩個 sheet，逐頁列出 Workflow description 並嵌入截圖縮圖。檔名帶寫檔當下的**本地**年月日時分秒（如 `workflow-20260803-153012.xlsx`），重跑各留一份、不覆蓋舊檔。
 _Avoid_: report, spreadsheet, 報表
 
 **Main flow diagram（主線流程圖）**:
@@ -41,7 +41,7 @@ _Avoid_: report, spreadsheet, 報表
 _Avoid_: BPMN 圖, flowchart, 流程圖（泛稱）, 網站地圖, Navigation diagram（已被取代的舊語）
 
 **Main flow（主線）**:
-一個**頂層 Page 分類**（此類專案即側欄模組）收成的一條流程；是 `mainflow.json` 的 `flows[]` 一筆，也是 draw.io 的一個分頁單位。`name` **照抄該分類名、不改字**，`flows` 順序照 `workflow.json` 的頁序——業主看圖就是看側欄。邊界不推論，推論的是每條主線切成幾步、每步怎麼措辭（素材是每頁的頁面用途，Overview 只當語氣參考）。每條主線 1–10 個 Step、單列橫排不折行，各自一個色系（9 色色表依 `flows` 順序取、超過循環）；步數不必每頁一樣長，頁多的分類切細、只有一頁的分類就是一步。推論落在交接檔 `mainflow.json`：**可手改，已存在就沿用、不重推論**（要重推得先刪檔或明講）。有涵蓋完整性硬驗——`steps[].pages` ∪ `excludedPages` 必須剛好等於 `workflow.json` 的頁集合、每頁只出現一次；不在任何主線上的落選頁圖上完全不提，只在 `excludedPages`（含一句 `reason`）與對話 warning 交代，完整操作清單仍以 `workflow.xlsx` 為權威；頂層分類全部上圖時 `excludedPages` 就是空陣列。
+一個**頂層 Page 分類**（此類專案即側欄模組）收成的一條流程；是 `mainflow.json` 的 `flows[]` 一筆，也是 draw.io 的一個分頁單位。`name` **照抄該分類名、不改字**，`flows` 順序照 `workflow.json` 的頁序——業主看圖就是看側欄。邊界不推論，推論的是每條主線切成幾步、每步怎麼措辭（素材是每頁的頁面用途，Overview 只當語氣參考）。每條主線 1–10 個 Step、單列橫排不折行，各自一個色系（9 色色表依 `flows` 順序取、超過循環）；步數不必每頁一樣長，頁多的分類切細、只有一頁的分類就是一步。推論落在交接檔 `mainflow.json`：**可手改，已存在就沿用、不重推論**（要重推得先刪檔或明講）。有涵蓋完整性硬驗——`steps[].pages` ∪ `excludedPages` 必須剛好等於 `workflow.json` 的頁集合、每頁只出現一次；不在任何主線上的落選頁圖上完全不提，只在 `excludedPages`（含一句 `reason`）與對話 warning 交代，完整操作清單仍以 `workflow-<時戳>.xlsx` 為權威；頂層分類全部上圖時 `excludedPages` 就是空陣列。
 _Avoid_: Section（已退場的舊分頁單位）, Route（專指 `pages[].route` 的 URL 路徑）, 模組（產品功能區的泛稱；主線邊界雖與它一致，文件上一律稱主線）
 
 **Step（步驟）**:
@@ -49,11 +49,11 @@ _Avoid_: Section（已退場的舊分頁單位）, Route（專指 `pages[].route
 _Avoid_: Page（Step 比 Page 大，一步可收攏多頁）, 節點（泛稱）, 任務（撞 Work item）
 
 **Work item（工項）**:
-一筆可分派、可畫押的最小工作單位；錨定在某個 Page，分前端／後端兩層，是 `workitems.xlsx` 每列的單位。
+一筆可分派、可畫押的最小工作單位；錨定在某個 Page，分前端／後端兩層，是 `workitems-<時戳>.xlsx` 每列的單位。
 _Avoid_: task, ticket, 任務（泛稱）
 
 **Work breakdown（工項劃分）**:
-把一個 Project 的 Workflow 拆成前端＋後端 Work item 的產物；由 `f2w-breakdown` 產出 `workitems.json`（宣告式逃生口），`f2w-breakdown-export` 組成 `workitems.xlsx`。
+把一個 Project 的 Workflow 拆成前端＋後端 Work item 的產物；由 `f2w-breakdown` 產出 `workitems.json`（宣告式逃生口），`f2w-breakdown-export` 組成 `workitems-<時戳>.xlsx`。
 _Avoid_: WBS（泛稱）, 拆解, 任務清單
 
 **Inferred work item（推論工項）**:
@@ -65,7 +65,7 @@ _Avoid_: 假設工項, 臆測工項
 _Avoid_: 分工, 指派, assignment（泛稱）
 
 **範本／工作副本（Template workbook／Working copy）**:
-`workitems.xlsx` 是畫押欄留白的**範本**、可被重跑覆蓋；人須另存一份**工作副本**填畫押值，重跑只覆蓋範本、不動工作副本。
+`workitems-<YYYYMMDD-HHmmss>.xlsx` 是畫押欄留白的**範本**；人須另存一份**工作副本**填畫押值。範本檔名帶時戳，重跑出的是新一份範本、不覆蓋舊的，換到新範本時畫押值須人工搬。
 _Avoid_: 空白表／填好的表（泛稱）
 
 ## 人工修訂（Revision）
@@ -107,7 +107,7 @@ _Avoid_: API doc, 文件（泛稱）
 _Avoid_: endpoint（單指 URL 路徑時可用）, feature
 
 **Party chain（分工鏈）**:
-一筆後端 Work item 的分工歸屬，形狀是一個 **leg** 陣列：單方做完就一個 leg，多方接力就多個 leg（依序）。**工項不拆項、id 不改寫**——拆項會改寫 id、讓使用者照交付物寫下的修訂錨不到東西（見 `docs/adr/0016-work-item-carries-party-chain.md`）。多列只在 `workitems.xlsx` 展開。方序列必須逐字等於宣告鏈之一。
+一筆後端 Work item 的分工歸屬，形狀是一個 **leg** 陣列：單方做完就一個 leg，多方接力就多個 leg（依序）。**工項不拆項、id 不改寫**——拆項會改寫 id、讓使用者照交付物寫下的修訂錨不到東西（見 `docs/adr/0016-work-item-carries-party-chain.md`）。多列只在 `workitems-<時戳>.xlsx` 展開。方序列必須逐字等於宣告鏈之一。
 _Avoid_: 跨方接力拆項（已廢做法）, originItemId（已廢欄位）, 分工歸屬（單筆時可用，但別拿來指整條鏈）
 
 **leg（分工段）**:
