@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import {
   buildWorkitems,
   discoverPartyInputs,
+  endpointsByVendor,
   loadWorkflowForBreakdown,
   saveWorkitems,
   WorkitemsConsistencyError,
@@ -441,15 +442,11 @@ const POLICY: Record<string, Policy> = {
       "GET /api/v1/projects/{projectID}/models/{modelID}/download/ws",
     ],
   },
-  "BE-MODEL-4": {
-    party: "gary",
-    endpoints: [
-      "POST /model-registry/v1/models/",
-      "POST /model-registry/v1/models/{model_id}/versions",
-      "GET /model-registry/v1/models/{model_id}/versions/{model_version_id}",
-      "PATCH /model-registry/v1/models/{model_id}/versions/{model_version_id}/status",
-    ],
-  },
+  // 落點仍是 gary：泳道上模型服務只能經 gary，模型 metadata／版本原本也由 gary 的
+  // model-registry 承接。但 2026-08-03 換入的四份 gary spec 已不含 /model-registry/v1/*，
+  // leadtek 的 aidms 同樣沒有任何模型版本／狀態端點，所以端點集留空——由 partyChainOf 在
+  // 實作 leg 的 scope 標明「現有 spec 未提供」，不改派也不假裝配到端點。
+  "BE-MODEL-4": { party: "gary", endpoints: [] },
 
   // 叢集資源。
   "BE-CLUSTER-1": {
@@ -626,10 +623,15 @@ const SELF = "mobagel";
 /**
  * 由一筆後端工項與它的下游落點，接出這筆工項的分工鏈。
  * 鏈的形狀照宣告鏈：落在 gary 就是 mobagel → gary，落在 leadtek 就是
- * mobagel → gary → leadtek（gary 那一段是純通道，沒有對應 API）。
+ * mobagel → gary → leadtek。中繼段（gary）帶不帶端點**由 gary 自己的 capability 決定**，
+ * 不寫死——gary 的 Gary-AIDMS-2.0.json 是 leadtek AIDMS API 的代理（掛 /api/AIDMS-2.0，
+ * 端點字串與 leadtek 那份逐字相同），把它一律當純通道會在交付物上抹掉一個已存在的代理層。
  * 每個 leg 都自帶散文——交付物上一個 leg 一列、一列一個 A。
  */
-function partyChainOf(item: { id: string; title: string; scope: string; acceptance: string }): PartyLeg[] {
+function partyChainOf(
+  item: { id: string; title: string; scope: string; acceptance: string },
+  garyEndpoints: ReadonlySet<string>,
+): PartyLeg[] {
   const policy = POLICY[item.id];
   if (policy === undefined) throw new Error(`POLICY 缺後端工項 ${item.id} 的下游落點`);
   if (policy === "investigate") return [{ party: NEEDS_INVESTIGATION, vendorEndpoints: [] }];
@@ -643,23 +645,39 @@ function partyChainOf(item: { id: string; title: string; scope: string; acceptan
     scope: `前端一律只呼叫 mobagel；由 mobagel 的「AI 資源控管平台」後端承接此請求，在 mobagel 端完成身分與授權判定後經 gary API gateway 轉呼下游 ${target}，並將回應整形為前端契約。權限判定只在 mobagel，${target} 不做逐使用者權限檢查。`,
     acceptance: `前端不直接呼叫 ${target}；請求經 mobagel 授權後穿 gary API gateway 轉發，gateway 層與下游的逾時與錯誤都由 mobagel 收斂為統一錯誤契約（見 BE-X-2、BE-EXTRA-02）。`,
   };
+  // 端點集空＝落點判得出來、但該方現有 spec 沒有對應端點。契約要求 vendor 與 vendorEndpoints
+  // 成對，所以這種 leg 與中繼段同形（兩者都留空），事實寫進 scope——而不是硬配一條相近的端點，
+  // 後者會讓 spec 缺口在交付物上消失。
+  const hasEndpoints = policy.endpoints.length > 0;
   const implementation: PartyLeg = {
     party: target,
-    vendor: target,
+    ...(hasEndpoints ? { vendor: target } : {}),
     vendorEndpoints: policy.endpoints,
     title: `${item.title}－${target} 實作`,
-    scope: item.scope,
+    scope: hasEndpoints
+      ? item.scope
+      : `${item.scope}（${target} 現有 spec 未提供對應端點，需該方補齊後回填。）`,
     acceptance: item.acceptance,
   };
   if (target === "gary") return [gateway, implementation];
 
-  // 三段鏈：gary 當純通道，沒有對應的 API 可配，端點留空但要寫出這個事實。
+  // 三段鏈的中繼段：gary 代理了哪幾條由它自己的 spec 說，driver 不寫死也不猜。
+  // 全都代理到了就指名 vendor 並列端點；有缺口就把缺的那幾條寫進 scope 要該方補齊。
+  const proxied = policy.endpoints.filter((e) => garyEndpoints.has(e));
+  const notProxied = policy.endpoints.filter((e) => !garyEndpoints.has(e));
   const relay: PartyLeg = {
     party: "gary",
-    vendorEndpoints: [],
-    title: `${item.title}－gary API gateway 轉發`,
-    scope: `gary 需開代理 API 轉呼 ${target}，現有四份 spec 未提供對應端點；此段只做轉發，不實作 ${item.title} 的業務邏輯。`,
-    acceptance: `mobagel 的請求能經此段抵達 ${target} 並取回回應，轉發保留呼叫端身分與追蹤識別，逾時與錯誤以可辨識的形式回傳給 mobagel。`,
+    ...(proxied.length ? { vendor: "gary" } : {}),
+    vendorEndpoints: proxied,
+    title: `${item.title}－gary API gateway 代理`,
+    scope: proxied.length
+      ? `gary 的 spec 已代理下列 ${target} 端點（掛在 /api/AIDMS-2.0）：${proxied.join("、")}。此段只做代理轉發，不實作 ${item.title} 的業務邏輯。${
+          notProxied.length
+            ? `另有 ${notProxied.join("、")} 在 gary 現有 spec 找不到對應代理端點，需該方補齊後回填。`
+            : ""
+        }`
+      : `gary 需開代理 API 轉呼 ${target}，現有 spec 未提供對應端點；此段只做轉發，不實作 ${item.title} 的業務邏輯。`,
+    acceptance: `mobagel 的請求經 gary 代理端點抵達 ${target} 並取回回應，代理保留呼叫端身分與追蹤識別，逾時與錯誤以可辨識的形式回傳給 mobagel。`,
   };
   return [gateway, relay, implementation];
 }
@@ -707,8 +725,11 @@ function buildFrontend(workflow: ReturnType<typeof loadWorkflowForBreakdown>): W
   return frontend;
 }
 
-/** 由 BACKEND 表與派工政策組出後端工項（含分工鏈）。 */
-function buildBackend(workflow: ReturnType<typeof loadWorkflowForBreakdown>): WorkItemInput[] {
+/** 由 BACKEND 表與派工政策組出後端工項（含分工鏈）。中繼段的端點由 gary capability 決定。 */
+function buildBackend(
+  workflow: ReturnType<typeof loadWorkflowForBreakdown>,
+  garyEndpoints: ReadonlySet<string>,
+): WorkItemInput[] {
   const byTab = new Map(workflow.pages.map((p) => [p.tab ?? "", p]));
   const backend: WorkItemInput[] = BACKEND.map((b) => {
     const page = byTab.get(b.page);
@@ -721,7 +742,10 @@ function buildBackend(workflow: ReturnType<typeof loadWorkflowForBreakdown>): Wo
       acceptance: b.a,
       dependsOn: b.d ?? [],
       risk: b.r ?? "",
-      partyChain: partyChainOf({ id: b.id, title: b.t, scope: b.s, acceptance: b.a }),
+      partyChain: partyChainOf(
+        { id: b.id, title: b.t, scope: b.s, acceptance: b.a },
+        garyEndpoints,
+      ),
     };
   });
 
@@ -741,8 +765,10 @@ test("f2w-breakdown：劃分前端／後端工項與分工鏈並落地 workitems
     ["mobagel", "gary", "leadtek"],
   ]);
 
+  // gary 代理了哪些端點由它自己的 spec 說；中繼段照這份集合帶端點，不寫死。
+  const garyEndpoints = endpointsByVendor(inputs.capabilities).get("gary") ?? new Set<string>();
   const frontend = buildFrontend(workflow);
-  const backend = buildBackend(workflow);
+  const backend = buildBackend(workflow, garyEndpoints);
 
   // 存檔前套上人工修訂；後端 id 漂掉的那些會變孤兒，只發 warning。
   const revisions = loadProjectRevisions(WORKSPACE_ROOT, PROJECT);
@@ -764,15 +790,17 @@ test("f2w-breakdown：劃分前端／後端工項與分工鏈並落地 workitems
   for (const n of lengths) dist[n] = (dist[n] ?? 0) + 1;
   expect(dist).toEqual({ 1: 21, 2: 15, 3: 24 });
 
-  // 三段鏈逐字是宣告鏈第三條，中繼段沒有供應商與端點、但 scope 寫出 gary 要開代理 API。
+  // 三段鏈逐字是宣告鏈第三條；中繼段帶 gary 自己代理的那幾條端點（gary 的 AIDMS spec 與
+  // leadtek 那份端點字串逐字相同，所以這 24 筆全部代理得到），scope 寫出它只做代理轉發。
   const threeLeg = workitems.backend.filter((i) => i.partyChain!.length === 3);
   expect(threeLeg).toHaveLength(24);
   for (const item of threeLeg) {
     const chain = item.partyChain!;
     expect(chain.map((l) => l.party)).toEqual(["mobagel", "gary", "leadtek"]);
-    expect(chain[1]!.vendor).toBeUndefined();
-    expect(chain[1]!.vendorEndpoints).toEqual([]);
-    expect(chain[1]!.scope).toContain("gary 需開代理 API");
+    expect(chain[1]!.vendor).toBe("gary");
+    expect(chain[1]!.vendorEndpoints).toEqual(chain[2]!.vendorEndpoints);
+    expect(chain[1]!.scope).toContain("gary 的 spec 已代理");
+    expect(chain[1]!.scope).not.toContain("未提供對應端點");
   }
 
   // 後端修訂的孤兒比例：spec 假設「補漏比改錯常見」，這裡把數字量出來。
@@ -816,15 +844,16 @@ test("f2w-breakdown-export：一個 leg 一列展開並落地 workitems.xlsx", a
     }
   }
 
-  // gary 中繼列：24 筆三段鏈各一列，供應商與端點皆空、分工段 2/3，
-  // 且標題／範疇／驗收都不等於同組 leadtek 那一列。
+  // gary 中繼列：24 筆三段鏈各一列，供應商為 gary、端點與同組 leadtek 那一列相同（代理層），
+  // 分工段 2/3，且標題／範疇／驗收都不等於同組 leadtek 那一列。
   const rows = Array.from({ length: backend.rowCount - 1 }, (_, i) => i + 2);
   const relays = rows.filter((r) => cell(r, "分工段") === "2/3");
   expect(relays).toHaveLength(24);
   for (const r of relays) {
     expect(cell(r, "派工方")).toBe("gary");
-    expect(cell(r, "供應商")).toBe("");
-    expect(cell(r, "供應商端點")).toBe("");
+    expect(cell(r, "供應商")).toBe("gary");
+    expect(cell(r, "供應商端點")).not.toBe("");
+    expect(cell(r, "供應商端點")).toBe(cell(r + 1, "供應商端點"));
     for (const field of ["標題", "範疇", "驗收標準"]) {
       expect(cell(r, field)).not.toBe(cell(r + 1, field));
     }
@@ -853,17 +882,22 @@ test("重跑冪等，且非宣告鏈的方序列讓整步丟錯不落地", () =>
     parties: inputs.parties,
     capabilities: inputs.capabilities,
   };
+  const garyEndpoints = endpointsByVendor(inputs.capabilities).get("gary") ?? new Set<string>();
 
   // 落檔後的 workitems.json 就是上一支 test 的產物；照同一組輸入再組一次要逐字相同
   // （不再有拆項造成的 id 改寫，所以連跑兩次的 id 集合與 partyChain 都不動）。
   const saved = loadWorkitemsForExport(OUTPUT_ROOT, PROJECT);
-  const again = buildWorkitems(workflow, buildFrontend(workflow), buildBackend(workflow), options)
-    .workitems;
+  const again = buildWorkitems(
+    workflow,
+    buildFrontend(workflow),
+    buildBackend(workflow, garyEndpoints),
+    options,
+  ).workitems;
   expect(again.backend.map((i) => i.id)).toEqual(saved.backend.map((i) => i.id));
   expect(again.backend.map((i) => i.partyChain)).toEqual(saved.backend.map((i) => i.partyChain));
 
   // 手動把一筆的方序列改成不在宣告鏈上的 mobagel > leadtek：整步丟錯、指名該筆。
-  const tampered = buildBackend(workflow).map((b) =>
+  const tampered = buildBackend(workflow, garyEndpoints).map((b) =>
     b.id === "BE-MODEL-1"
       ? {
           ...b,

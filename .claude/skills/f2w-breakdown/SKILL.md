@@ -32,7 +32,7 @@ description: frontend-to-workflow 管線的第五步。讀取 workflow.json，�
    - 有派工輸入時，**每筆**後端工項再帶一個 `partyChain`：leg 陣列，每個 leg 是 `{ party, vendor?, vendorEndpoints, title?, scope?, acceptance? }`。
      - **一筆工項一份 id，多方接力只是多一個 leg，絕不拆項**——拆項會改寫 id、讓使用者照交付物寫下的修訂錨不到東西（見 `docs/adr/0016-work-item-carries-party-chain.md`）。
      - **多 leg 時每個 leg 的 `title`／`scope`／`acceptance` 都必須自己寫**，不可樣板複製：交付物上一個 leg 一列、一列一個 A，中繼那一列若顯示下游方的活與下游方的驗收，該方就無從畫押。單 leg 可缺這三欄，缺時繼承工項層。
-     - **中繼段（純通道）的 `vendor`／`vendorEndpoints` 留空是合法的**，但 `scope` 要寫出「該方需開代理 API 轉呼下游、現有 spec 未提供」這類事實。
+     - **中繼段（純通道）的 `vendor`／`vendorEndpoints` 留空是合法的**，但 `scope` 要寫出「該方需開代理 API 轉呼下游、現有 spec 未提供」這類事實。**留空前先查該方自己的 capability**：那句「未提供對應端點」是可被 spec 反證的事實陳述，該方的 spec 若已代理了本鏈用到的端點（同一支 API 被兩個方各交一份 spec 時最常見，端點字串會逐字相同），中繼段就該指名 `vendor` 並列出那些端點，否則交付物上會抹掉一個已存在的代理層。步驟 5 有硬底線把關。
      - 判不出誰做時整筆用 `[{ party: "needs-investigation", vendorEndpoints: [] }]`；它是長度 1 的鏈，**不得**出現在多 leg 鏈裡。
      - `partyChain` **全有全無**：後端要嘛每筆都有、要嘛每筆都沒有（半套比沒派工更難察覺）。
    - 配對本身仍是 **AI 推論**，不是解析器算出來的——`sourcingConfirmed` 一律寫 `false`，開工前要人核（見 `docs/adr/0007-party-assignment-from-swimlane-diagram.md`）。它與後端既有的「推論·待確認」是兩個獨立的待確認維度。
@@ -41,7 +41,7 @@ description: frontend-to-workflow 管線的第五步。讀取 workflow.json，�
    - **存檔前套上人工修訂**，支援 `set`（覆蓋欄位，含 `partyChain`）／`upsert`（補一筆工項）／`remove`（刪一筆工項）。**人的校正壓過 AI 的新產出**——一個欄位被 `set` 過就**凍結**在使用者的值，重跑再也改不動，除非手動從 `revisions.json` 刪掉那筆；要向使用者交代這件事。套用**之後**才跑下面全部把關，所以 `remove` 掉太多前端工項而跌破底線、或 `set partyChain` 改成非宣告鏈時，都會丟錯**不落地**。
    - 回傳 `{ workitems, warnings }`。`warnings` 是**孤兒修訂**（錨指向的工項或 leg 這次不存在，後端 id 漂掉最常見）：保留該筆、發 warning、其餘照套，不中止。把 warnings 報給使用者。
    - 把關：**涵蓋＋顆粒度**（每個 Page 的前端工項數 ≥ `max(1, 該頁 actions 數)`）、**參照**（每筆 `sourcePage` 存在於 `workflow.pages`、`dependsOn` 每個 id 存在於本批）、**id 全域唯一且不含 `#`**、**inferred 旗標**（前端 false、後端 true，由陣列決定）、**分工鏈**。`sourcePage` 一律取自 `workflow.pages`（單一真實來源）。
-   - **鏈硬底線**：每筆後端工項的方序列（`partyChain.map(l => l.party)`）必須**逐字等於宣告鏈之一**，含**單 leg**——否則一筆 `[{party:"leadtek"}]`（字面上的前端直打 leadtek）會零攔截。`["needs-investigation"]` 永遠合法。違反即丟錯不落地並逐一列名工項 id 與它實際的方序列。另外 `party` 必須在分工方集合（＝泳道名）∪ `{needs-investigation}` 內、leg 的 `vendor` 必須在已解析的 capability 內、`vendorEndpoints` 每條必須真的存在於該 spec。
+   - **鏈硬底線**：每筆後端工項的方序列（`partyChain.map(l => l.party)`）必須**逐字等於宣告鏈之一**，含**單 leg**——否則一筆 `[{party:"leadtek"}]`（字面上的前端直打 leadtek）會零攔截。`["needs-investigation"]` 永遠合法。違反即丟錯不落地並逐一列名工項 id 與它實際的方序列。另外 `party` 必須在分工方集合（＝泳道名）∪ `{needs-investigation}` 內、leg 的 `vendor` 必須在已解析的 capability 內、`vendorEndpoints` 每條必須真的存在於該 spec。**留空底線**：`vendorEndpoints` 留空的 leg，若該 party 自己的 capability 裡就有本鏈其它 leg 用到的端點，即丟錯並列名那幾條——「該方未提供對應端點」被自家 spec 反證。修法二選一：把端點列進那個 leg（並指名 `vendor`），或那份 spec 掛錯目錄、把它移出 `workspace/spec/<project>/<方名>/`。
    - 涵蓋／參照／分工鏈不符丟 `WorkitemsConsistencyError`；不合契約（空欄位、id 重複或含 `#`、inferred 旗標、`partyChain` 半套、多 leg 缺散文）冒泡 `ContractValidationError`。
 6. **保存** — `saveWorkitems(outputRoot, project, workitems)`
    - 通過契約驗證才寫 `output/<project>/workitems.json`；驗證失敗丟 `ContractValidationError` 且不落地。

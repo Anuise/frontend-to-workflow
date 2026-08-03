@@ -368,6 +368,50 @@ describe("鏈硬底線與方名／端點把關", () => {
     ).toThrow(/GET \/nope/);
   });
 
+  it("留空的中繼段其實在自己 spec 裡就有本鏈端點時被擋下並指名該端點", () => {
+    // 中繼方的 spec 是下游 API 的代理，兩邊端點字串相同。這種段留空等於在交付物上抹掉一個
+    // 已存在的代理層，還附帶「該方 spec 未提供對應端點」的假陳述，所以要擋。
+    const caps = [...CAPS, { ...CAPS[0]!, vendor: "leadtek" }];
+    const call = () =>
+      buildWorkitems(
+        workflow,
+        frontendItems,
+        withChain([
+          { party: "mobagel", vendorEndpoints: [], ...prose("mobagel") },
+          { party: "gary", vendorEndpoints: [], ...prose("gary") },
+          {
+            party: "leadtek",
+            vendor: "leadtek",
+            vendorEndpoints: ["GET /models"],
+            ...prose("leadtek"),
+          },
+        ]),
+        { declaredChains: DECLARED, parties: PARTIES, capabilities: caps },
+      );
+    expect(call).toThrow(WorkitemsConsistencyError);
+    expect(call).toThrow(/leg 2：party「gary」端點留空，但它的 spec 裡就有本鏈用到的 GET \/models/);
+  });
+
+  it("該方 spec 真的沒有本鏈端點時，留空的中繼段仍然合法", () => {
+    const caps = [...CAPS, { ...CAPS[0]!, vendor: "leadtek", endpoint: "GET /jobs", path: "/jobs" }];
+    const { workitems } = buildWorkitems(
+      workflow,
+      frontendItems,
+      withChain([
+        { party: "mobagel", vendorEndpoints: [], ...prose("mobagel") },
+        { party: "gary", vendorEndpoints: [], ...prose("gary") },
+        {
+          party: "leadtek",
+          vendor: "leadtek",
+          vendorEndpoints: ["GET /jobs"],
+          ...prose("leadtek"),
+        },
+      ]),
+      { declaredChains: DECLARED, parties: PARTIES, capabilities: caps },
+    );
+    expect(workitems.backend[0]?.partyChain?.[1]?.vendorEndpoints).toEqual([]);
+  });
+
   it("party 為 spec 檔名而非泳道名時被擋下——舊行為已消失", () => {
     expect(() => build(withChain([{ party: "IDP-service", vendorEndpoints: [] }]))).toThrow(
       /IDP-service/,
