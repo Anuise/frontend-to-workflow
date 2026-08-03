@@ -54,7 +54,8 @@ export interface WorkitemsBuild {
  *  - 涵蓋：某個 Page 沒有任何前端工項（或前端工項數少於該頁可執行操作數）；
  *  - 參照：某筆 sourcePage 指向 workflow.pages 沒有的 Page，或 dependsOn 指向本批不存在的工項 id；
  *  - 前端 id 未依 workflow.json 的陣列索引推導；
- *  - 分工鏈：方序列不在宣告鏈內、party 不在分工方集合內、vendor／端點不存在於對應 spec。
+ *  - 分工鏈：方序列不在宣告鏈內、party 不在分工方集合內、vendor／端點不存在於對應 spec、
+ *    留空端點的那一段其實在自己的 spec 裡就有本鏈用到的端點。
  */
 export class WorkitemsConsistencyError extends Error {
   constructor(message: string) {
@@ -125,6 +126,10 @@ export function checkWorkitemsConsistency(workflow: Workflow, workitems: Workite
  * 只校多 leg 的話，一筆 `[{party:"leadtek"}]`（字面上的前端直打 leadtek）會零攔截。
  * `["needs-investigation"]` 這條長度 1 的鏈永遠合法（多 leg 帶它已由契約層擋下）。
  *
+ * 端點留空的那一段（純通道）**仍然合法**，但「該方 spec 未提供對應端點」是可被 spec 反證的事實
+ * 陳述：若那個方自己的 spec 裡就有本鏈用到的端點，留空就是在交付物上抹掉一個已存在的代理層。
+ * 這種段一律擋下——要嘛把端點列上，要嘛那份 spec 根本不該掛在該方目錄下。
+ *
  * 這一步跑在**套用修訂之後**，因為 `set partyChain` 也要被校。違反即丟錯不落地並逐一列名。
  * 乾跑呼叫的是同一支——否則乾跑報綠、上游重跑才炸，正是 ADR-0012 點名的失效模式。
  */
@@ -138,15 +143,29 @@ export function checkPartyChains(workitems: Workitems, inputs: PartyChainInputs 
   const declared = new Set(declaredChains.map((c) => c.join(" > ")));
   const badChain: string[] = [];
   const badField: string[] = [];
+  const badRelay: string[] = [];
 
   for (const item of chained) {
     const chain = item.partyChain!;
+    // 本鏈用到的全部端點——留空段要拿它跟自己的 spec 對，才知道「未提供」是不是假的。
+    const chainEndpoints = chain.flatMap((l) => l.vendorEndpoints);
     chain.forEach((leg, i) => {
       const at = `${item.id} 的 leg ${i + 1}`;
       if (leg.party !== NEEDS_INVESTIGATION && !partySet.has(leg.party)) {
         badField.push(
           `${at}：party「${leg.party}」不在分工方集合內（可用：${[...partySet].join("、") || "（無，本次沒有泳道圖）"}）`,
         );
+      }
+      // capability 的 vendor 識別名就是 spec 所在的目錄名，也就是方名（見 ADR-0018），
+      // 所以拿 leg.party 直接查得到「這個方自己宣告了哪些端點」。
+      const own = byVendor.get(leg.party);
+      if (leg.vendorEndpoints.length === 0 && own !== undefined) {
+        const covered = chainEndpoints.filter((e) => own.has(e));
+        if (covered.length) {
+          badRelay.push(
+            `${at}：party「${leg.party}」端點留空，但它的 spec 裡就有本鏈用到的 ${covered.join("、")}`,
+          );
+        }
       }
       if (leg.vendor === undefined) return;
       const known = byVendor.get(leg.vendor);
@@ -179,6 +198,16 @@ export function checkPartyChains(workitems: Workitems, inputs: PartyChainInputs 
     );
   }
   if (badField.length) problems.push(badField.join("\n"));
+  if (badRelay.length) {
+    problems.push(
+      [
+        "以下 leg 端點留空，但該方自己的 spec 就有本鏈用到的端點——「該方未提供對應端點」是假陳述：",
+        ...badRelay.map((b) => `  ${b}`),
+        "  修法二選一：把該方的端點列進那個 leg 的 vendorEndpoints（並指名 vendor）；",
+        "  或該方其實沒開這些 API、那份 spec 掛錯目錄，把它移出 workspace/spec/<project>/<方名>/。",
+      ].join("\n"),
+    );
+  }
   if (problems.length) throw new WorkitemsConsistencyError(problems.join("\n"));
 }
 
