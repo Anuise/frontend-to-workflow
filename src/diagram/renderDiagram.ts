@@ -34,6 +34,15 @@ function flowTitleStyle(colorIndex: number): string {
   return `text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;fontColor=${colorOf(colorIndex).stroke};`;
 }
 
+/**
+ * 業務決策點：同色系的菱形、不寫字。
+ * 條件措辭掛在出去的每一條邊上；菱形本身只負責讓看圖的人一眼認出「這裡要選一條」。
+ */
+function decisionStyle(colorIndex: number): string {
+  const { fill, stroke } = colorOf(colorIndex);
+  return `rhombus;whiteSpace=wrap;html=1;fillColor=${fill};strokeColor=${stroke};`;
+}
+
 /** 標題下的細橫線：同色系的實心細長方形。 */
 function ruleStyle(colorIndex: number): string {
   return `rounded=0;html=1;fillColor=${colorOf(colorIndex).stroke};strokeColor=none;`;
@@ -75,6 +84,7 @@ function nodeValue(node: DiagramNode): string {
 function styleOf(node: DiagramNode): string {
   if (node.kind === "flowTitle") return flowTitleStyle(node.colorIndex);
   if (node.kind === "rule") return ruleStyle(node.colorIndex);
+  if (node.kind === "decision") return decisionStyle(node.colorIndex);
   return stepStyle(node.colorIndex);
 }
 
@@ -99,16 +109,32 @@ function renderNode(node: DiagramNode): string {
 }
 
 function renderEdge(edge: DiagramEdge): string {
+  const geometry =
+    edge.waypoints === undefined
+      ? ['          <mxGeometry relative="1" as="geometry" />']
+      : [
+          '          <mxGeometry relative="1" as="geometry">',
+          '            <Array as="points">',
+          ...edge.waypoints.map((point) => `              <mxPoint x="${point.x}" y="${point.y}" />`),
+          "            </Array>",
+          "          </mxGeometry>",
+        ];
   return [
     `        <mxCell id="${edge.id}" value="${escapeXml(edge.label)}" style="${EDGE_STYLE}" edge="1" parent="1" source="${edge.sourceId}" target="${edge.targetId}">`,
-    '          <mxGeometry relative="1" as="geometry" />',
+    ...geometry,
     "        </mxCell>",
   ].join("\n");
 }
 
 function renderPage(page: DiagramPage): string[] {
   const width = Math.max(0, ...page.nodes.map((node) => node.x + node.width)) + PAGE_MARGIN;
-  const height = Math.max(0, ...page.nodes.map((node) => node.y + node.height)) + PAGE_MARGIN;
+  // 繞路帶落在最後一列步驟框的下方，頁高要把轉折點一起算進去才不會被切掉。
+  const height =
+    Math.max(
+      0,
+      ...page.nodes.map((node) => node.y + node.height),
+      ...page.edges.flatMap((edge) => edge.waypoints?.map((point) => point.y) ?? []),
+    ) + PAGE_MARGIN;
   return [
     `  <diagram id="${escapeXml(page.id)}" name="${escapeXml(page.name)}">`,
     `    <mxGraphModel dx="0" dy="0" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${width}" pageHeight="${height}" math="0" shadow="0">`,
