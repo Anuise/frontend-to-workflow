@@ -2,14 +2,14 @@ import {
   type ExcludedPage,
   type Mainflow,
   type MainflowFlow,
-  type MainflowStep,
+  type MainflowOutcome,
   coveredPages,
 } from "../contracts/mainflow";
 import { type PageId, pageIdKey } from "../contracts/page";
 import type { Workflow, WorkflowAction, WorkflowPage } from "../contracts/workflow";
 
-/** Main flow diagram 上的圖元種類：主線標題、標題下的細橫線、業務步驟。 */
-export type DiagramNodeKind = "flowTitle" | "rule" | "step";
+/** Main flow diagram 上的圖元種類：主線標題、標題下的細橫線、業務步驟、業務決策點。 */
+export type DiagramNodeKind = "flowTitle" | "rule" | "step" | "decision";
 
 /** 單一圖元：語意（id／種類／標題／小字／提示）＋色系＋座標與尺寸。 */
 export interface DiagramNode {
@@ -29,12 +29,17 @@ export interface DiagramNode {
   height: number;
 }
 
-/** 步驟之間的推進邊；label 是業務轉場動作（≤8 字）。 */
+/** 步驟之間的邊；label 是條件措辭（≤8 字），決策點進來的那條無 label。 */
 export interface DiagramEdge {
   id: string;
   label: string;
   sourceId: string;
   targetId: string;
+  /**
+   * 跳步與迴圈邊要走的轉折點（主線下方的繞路帶）。
+   * 不給就交給 draw.io 自己算——它會走最短路徑，也就是直接穿過中間那幾個步驟框。
+   */
+  waypoints?: Array<{ x: number; y: number }>;
 }
 
 /** draw.io 的一個分頁：每條主線各一頁，最後再一頁把全部主線由上到下排在一起的總覽。 */
@@ -77,8 +82,17 @@ const TITLE_HEIGHT = 40;
 const RULE_HEIGHT = 2;
 const RULE_Y = TITLE_Y + TITLE_HEIGHT + 12;
 const STEP_Y = RULE_Y + RULE_HEIGHT + 36;
-/** 總覽頁上下相鄰兩條主線的縱向間距：一條主線的內容高 ＋ 主線之間的留白。 */
-const ROW_SPACING = STEP_Y + STEP_HEIGHT + 80;
+/** 決策菱形：夾在該步右緣與下一步左緣之間（240 + 20 + 60 + 20 = 340），垂直置中對齊步驟框。 */
+const DECISION_SIZE = 60;
+const DECISION_GAP = 20;
+/** 分歧步要多讓一段橫向空間，否則菱形出去的條件 label 會疊在下一步的框上。 */
+const BRANCH_EXTRA = 160;
+/** 每一條「不是走去下一步」的出口（跳步或迴圈）在主線下方各佔一條繞路帶。 */
+const DETOUR_LANE = 60;
+/** 第一條繞路帶離步驟框底部的距離。 */
+const DETOUR_GAP = 60;
+/** 總覽頁上下相鄰兩條主線之間的留白。 */
+const LANE_GAP = 80;
 
 /** 把 Page 識別轉成可讀標籤（含 tab）。 */
 function pageLabel(id: PageId): string {
@@ -145,33 +159,58 @@ function requireExactCoverage(workflow: Workflow, mainflow: Mainflow): void {
   }
 }
 
-/** 這一步收攏的頁能走到的所有 Page。 */
-function reachableFrom(step: MainflowStep, byKey: Map<string, WorkflowPage>): Set<string> {
-  const keys = new Set<string>();
-  for (const id of step.pages) {
-    for (const action of navigatingActions(byKey.get(pageIdKey(id))!)) {
-      keys.add(pageIdKey(action.destination));
-    }
-  }
-  return keys;
-}
-
 /**
- * 相鄰兩步之間必須有真實的操作去向墊背（來源步任一頁 → 目標步任一頁）。
- * 圖是業務措辭、但每條邊都有 workflow.json 事實支撐；接不上就要求改順序或改分步，不畫虛線。
+ * 每條出口都要有事實憑據：evidence 指的 (page, label) 必須逐字命中 workflow.json 的某個操作，
+ * 而且那一頁必須是來源步自己收攏的頁——不能拿別步的畫面替這一步作證。
+ * 該操作若真的會換頁（destination 非 null），去向還必須落在目標步收攏的頁裡。
+ *
+ * 同一步之內憑據還要彼此相異：同一顆按鈕不可能同時是「核准」又是「退件」，
+ * 共用憑據代表分歧是掰出來的。跨步共用同一個 label 則合法——不同步本來就會操作同一個畫面。
+ *
+ * 圖是業務措辭、但每條邊都有 workflow.json 事實支撐；接不上就要求改分步或改 target，不畫虛線。
  */
-function requireRealEdges(workflow: Workflow, mainflow: Mainflow): void {
+function requireEvidencedOutcomes(workflow: Workflow, mainflow: Mainflow): void {
   const byKey = new Map(workflow.pages.map((page) => [pageIdKey(page), page] as const));
   for (const flow of mainflow.flows) {
-    for (const [index, step] of flow.steps.slice(0, -1).entries()) {
-      const next = flow.steps[index + 1]!;
-      const reachable = reachableFrom(step, byKey);
-      if (!next.pages.some((id) => reachable.has(pageIdKey(id)))) {
-        throw new DiagramConsistencyError(
-          `主線「${flow.name}」第 ${index + 1} 步「${step.title}」到第 ${index + 2} 步「${next.title}」在 workflow.json 裡沒有任何操作去向可走：請調整步驟順序或重新分步。`,
-        );
+    flow.steps.forEach((step, index) => {
+      const where = `主線「${flow.name}」第 ${index + 1} 步「${step.title}」`;
+      const ownPages = new Set(step.pages.map(pageIdKey));
+      /** 本步已被引用過的憑據（route + tab + label），用來擋同一步之內的重複引用。 */
+      const usedEvidence = new Set<string>();
+      for (const outcome of step.outcomes) {
+        const evidenceKey = pageIdKey(outcome.evidence);
+        if (!ownPages.has(evidenceKey)) {
+          throw new DiagramConsistencyError(
+            `${where}的出口「${outcome.condition}」拿 ${pageLabel(outcome.evidence)} 當憑據，但那一頁不屬於這一步：憑據只能取自本步收攏的頁。`,
+          );
+        }
+        const action = byKey
+          .get(evidenceKey)!
+          .actions.find((candidate) => candidate.label === outcome.evidence.label);
+        if (action === undefined) {
+          throw new DiagramConsistencyError(
+            `${where}的出口「${outcome.condition}」在 ${pageLabel(outcome.evidence)} 上找不到操作「${outcome.evidence.label}」：憑據必須逐字命中 workflow.json 的 actions[]。`,
+          );
+        }
+        const target = flow.steps[outcome.target - 1]!;
+        const destination = action.destination;
+        if (
+          destination !== null &&
+          !target.pages.some((id) => pageIdKey(id) === pageIdKey(destination))
+        ) {
+          throw new DiagramConsistencyError(
+            `${where}的出口「${outcome.condition}」的操作會前往 ${pageLabel(destination)}，但第 ${outcome.target} 步「${target.title}」不含那一頁：請改 target 或重新分步。`,
+          );
+        }
+        const usageKey = JSON.stringify([evidenceKey, outcome.evidence.label]);
+        if (usedEvidence.has(usageKey)) {
+          throw new DiagramConsistencyError(
+            `${where}的出口「${outcome.condition}」重複引用 ${pageLabel(outcome.evidence)} 的操作「${outcome.evidence.label}」：同一步之內，兩個出口不得拿同一個操作當憑據。`,
+          );
+        }
+        usedEvidence.add(usageKey);
       }
-    }
+    });
   }
 }
 
@@ -181,17 +220,60 @@ function coveredTooltip(pages: readonly PageId[]): string {
 }
 
 /**
- * 一條主線的一列：標題 ＋ 細橫線 ＋ 單列橫排的步驟與推進邊。
+ * 這條出口是不是「不是走去下一步」——跳步或迴圈，要壓進主線下方的繞路帶。
+ * 預留高度（detourCount）與實際轉折點（buildFlowLane）共用這一個判準：
+ * 兩邊各寫一份的話，只改一邊就會讓讓出的高度與真正的轉折點靜默錯位。
+ */
+function isDetour(outcome: MainflowOutcome, stepIndex: number): boolean {
+  return outcome.target !== stepIndex + 2;
+}
+
+/** 這條主線有幾條「不是走去下一步」的出口——跳步與迴圈，每一條在主線下方各佔一條繞路帶。 */
+function detourCount(flow: MainflowFlow): number {
+  return flow.steps.reduce(
+    (total, step, index) => total + step.outcomes.filter((o) => isDetour(o, index)).length,
+    0,
+  );
+}
+
+/**
+ * 一條主線佔的縱向高度：標題與單列橫排的步驟，再加上繞路邊要走的下方空間。
+ * 帶了分歧之後主線高度不再一致，所以這是算出來的，不是常數。
+ */
+function laneHeight(flow: MainflowFlow): number {
+  const detours = detourCount(flow);
+  return STEP_Y + STEP_HEIGHT + (detours > 0 ? DETOUR_GAP + detours * DETOUR_LANE : 0);
+}
+
+/**
+ * 一條主線的一列：標題 ＋ 細橫線 ＋ 單列橫排的步驟，出口邊照 outcomes 拉。
+ * 一步有 ≥2 個出口就是業務決策點，右邊長出一個菱形（不佔步號、不寫進 mainflow.json），
+ * 條件 label 掛在菱形出去的每一條邊上；單出口直接從步驟框拉一條帶 label 的邊。
  * 主線自己那頁用 yOffset 0，總覽頁按主線順序往下堆；idPrefix 讓同一條主線在兩頁各有一組 id。
  */
-function buildFlowRow(
+function buildFlowLane(
   flow: MainflowFlow,
   flowIndex: number,
   idPrefix: string,
   yOffset: number,
 ): Pick<DiagramPage, "nodes" | "edges"> {
-  const rowWidth = (flow.steps.length - 1) * COLUMN_SPACING + STEP_WIDTH;
+  // 步驟橫向座標逐步累加：分歧步多讓一段，好讓菱形出去的條件 label 有地方放。
+  const stepXs: number[] = [];
+  let cursorX = ORIGIN_X;
+  for (const step of flow.steps) {
+    stepXs.push(cursorX);
+    cursorX += COLUMN_SPACING + (step.outcomes.length >= 2 ? BRANCH_EXTRA : 0);
+  }
+  const lastStepBranches = (flow.steps.at(-1)?.outcomes.length ?? 0) >= 2;
+  const rowWidth =
+    stepXs.at(-1)! -
+    ORIGIN_X +
+    STEP_WIDTH +
+    (lastStepBranches ? DECISION_GAP + DECISION_SIZE : 0);
+  /** 繞路邊由上往下依序佔用下方的帶，一條一帶，避免兩條疊在同一條線上。 */
+  let detourLane = 0;
   const stepId = (index: number) => `${idPrefix}Step_${flowIndex + 1}_${index + 1}`;
+  const decisionId = (index: number) => `${idPrefix}Decision_${flowIndex + 1}_${index + 1}`;
   const nodes: DiagramNode[] = [
     {
       id: `${idPrefix}Title_${flowIndex + 1}`,
@@ -217,6 +299,7 @@ function buildFlowRow(
   const edges: DiagramEdge[] = [];
 
   flow.steps.forEach((step, index) => {
+    const stepX = stepXs[index]!;
     nodes.push({
       id: stepId(index),
       kind: "step",
@@ -224,19 +307,54 @@ function buildFlowRow(
       label: step.note,
       tooltip: coveredTooltip(step.pages),
       colorIndex: flowIndex,
-      x: ORIGIN_X + index * COLUMN_SPACING,
+      x: stepX,
       y: yOffset + STEP_Y,
       width: STEP_WIDTH,
       height: STEP_HEIGHT,
     });
-    if (step.edgeLabel !== undefined) {
+
+    const branching = step.outcomes.length >= 2;
+    if (branching) {
+      nodes.push({
+        id: decisionId(index),
+        kind: "decision",
+        label: "",
+        colorIndex: flowIndex,
+        x: stepX + STEP_WIDTH + DECISION_GAP,
+        y: yOffset + STEP_Y + (STEP_HEIGHT - DECISION_SIZE) / 2,
+        width: DECISION_SIZE,
+        height: DECISION_SIZE,
+      });
       edges.push({
-        id: `${idPrefix}Edge_${flowIndex + 1}_${index + 1}`,
-        label: step.edgeLabel,
+        id: `${idPrefix}Edge_${flowIndex + 1}_${index + 1}_0`,
+        label: "",
         sourceId: stepId(index),
-        targetId: stepId(index + 1),
+        targetId: decisionId(index),
       });
     }
+
+    step.outcomes.forEach((outcome, outcomeIndex) => {
+      const edge: DiagramEdge = {
+        id: `${idPrefix}Edge_${flowIndex + 1}_${index + 1}_${outcomeIndex + 1}`,
+        label: outcome.condition,
+        sourceId: branching ? decisionId(index) : stepId(index),
+        targetId: stepId(outcome.target - 1),
+      };
+      // 走去下一步的邊是主鏈，讓 draw.io 直接連；跳步與迴圈得壓進下方繞路帶，
+      // 否則它會走最短路徑直接橫穿中間那幾個步驟框，label 也會疊在框上。
+      if (isDetour(outcome, index)) {
+        const detourY = yOffset + STEP_Y + STEP_HEIGHT + DETOUR_GAP + detourLane * DETOUR_LANE;
+        detourLane += 1;
+        const fromX = branching
+          ? stepX + STEP_WIDTH + DECISION_GAP + DECISION_SIZE / 2
+          : stepX + STEP_WIDTH / 2;
+        edge.waypoints = [
+          { x: fromX, y: detourY },
+          { x: stepXs[outcome.target - 1]! + STEP_WIDTH / 2, y: detourY },
+        ];
+      }
+      edges.push(edge);
+    });
   });
 
   return { nodes, edges };
@@ -247,15 +365,21 @@ function buildFlowPage(flow: MainflowFlow, flowIndex: number): DiagramPage {
   return {
     id: `Diagram_${flowIndex + 1}`,
     name: flow.name,
-    ...buildFlowRow(flow, flowIndex, "", 0),
+    ...buildFlowLane(flow, flowIndex, "", 0),
   };
 }
 
-/** 最後一頁：把每條主線那一列**照 flows 順序由上到下**排在同一頁，一頁看完整個平台。 */
+/**
+ * 最後一頁：把每條主線那一列**照 flows 順序由上到下**排在同一頁，一頁看完整個平台。
+ * 縱向位置是逐條累計出來的——主線帶分歧之後高度不再一致，固定間距乘序號會讓長主線壓到下一條。
+ */
 function buildOverviewPage(flows: readonly MainflowFlow[]): DiagramPage {
-  const rows = flows.map((flow, index) =>
-    buildFlowRow(flow, index, "Overview_", index * ROW_SPACING),
-  );
+  let y = 0;
+  const rows = flows.map((flow, index) => {
+    const row = buildFlowLane(flow, index, "Overview_", y);
+    y += laneHeight(flow) + LANE_GAP;
+    return row;
+  });
   return {
     id: "Diagram_Overview",
     name: OVERVIEW_PAGE_NAME,
@@ -275,7 +399,7 @@ export function buildDiagram(workflow: Workflow, mainflow: Mainflow): MainFlowDi
   requireKnownDestinations(workflow);
   requireSameProject(workflow, mainflow);
   requireExactCoverage(workflow, mainflow);
-  requireRealEdges(workflow, mainflow);
+  requireEvidencedOutcomes(workflow, mainflow);
 
   return {
     name: workflow.project,

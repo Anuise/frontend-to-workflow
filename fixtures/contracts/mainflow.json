@@ -8,18 +8,31 @@
           "title": "進入首頁",
           "note": "從首頁開始使用這個示範前端",
           "pages": [{ "route": "/" }],
-          "edgeLabel": "前往設定"
+          "outcomes": [
+            {
+              "condition": "前往設定",
+              "target": 2,
+              "evidence": { "route": "/", "label": "點擊「前往設定」按鈕" }
+            }
+          ]
         },
         {
           "title": "編輯個人資料",
           "note": "填寫姓名與 Email",
           "pages": [{ "route": "/settings", "tab": "個人資料" }],
-          "edgeLabel": "切到帳號"
+          "outcomes": [
+            {
+              "condition": "切到帳號",
+              "target": 3,
+              "evidence": { "route": "/settings", "tab": "個人資料", "label": "點擊「帳號」tab" }
+            }
+          ]
         },
         {
           "title": "維護帳號安全",
           "note": "設定帳號密碼",
-          "pages": [{ "route": "/settings", "tab": "帳號" }]
+          "pages": [{ "route": "/settings", "tab": "帳號" }],
+          "outcomes": []
         }
       ]
     }

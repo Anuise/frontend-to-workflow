@@ -7,7 +7,8 @@ import { requireContract, requirePrerequisite } from "../prerequisites";
 /**
  * f2w-diagram 的前置入口：確認 f2w-describe 的 workflow.json 已存在，讀回並驗證後回傳。
  * 缺 workflow.json 丟 MissingPrerequisiteError，提示先跑 f2w-describe。
- * 節點與邊的素材全部來自 Page 與其「操作去向」，不需截圖。
+ * 純函式這一側的素材全部來自這裡：節點是 Page，邊的事實憑據是該頁的 actions[].label
+ * （會換頁時才連帶驗 destination）。截圖只進上游的主線推論，不進本檔、也不進硬驗。
  */
 export function loadWorkflowForDiagram(outputRoot: string, project: string): Workflow {
   return loadWorkflow(requireContract(outputRoot, project, "workflow"));
